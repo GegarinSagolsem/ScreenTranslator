@@ -7,13 +7,16 @@
         <tb:TaskbarIcon x:Key="TrayIcon"
                          ToolTipText="ScreenTranslator"
                          MenuActivation="RightClick"
-                         IconSource="/icon.ico">
+                         IconSource="/icon.ico"
+                         TrayMouseDoubleClick="TrayIcon_DoubleClick">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
+                    <MenuItem Header="Open game bar" InputGestureText="Ctrl+Shift+G" FontWeight="SemiBold" Click="TrayGameBar_Click"/>
+                    <Separator/>
                     <MenuItem Header="Reselect region" InputGestureText="Ctrl+Shift+R" Click="TrayReselect_Click"/>
                     <MenuItem Header="Pause / resume" InputGestureText="Ctrl+Shift+P" Click="TrayPause_Click"/>
                     <MenuItem Header="Cycle opacity" InputGestureText="Ctrl+Shift+O" Click="TrayOpacity_Click"/>
-                    <!-- "Source language" submenu is inserted here from code -->
+                    <MenuItem Header="Source language" Tag="LanguageMenu"/>
                     <Separator/>
                     <MenuItem Header="Set DeepL API key…" Click="TrayApiKey_Click"/>
                     <Separator/>

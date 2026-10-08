@@ -30,5 +30,21 @@ namespace ScreenTranslator
 
         [DllImport("user32.dll")]
         public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        /// <summary>Lets mouse input pass straight through the window to whatever is underneath.</summary>
+        public static void SetClickThrough(IntPtr hwnd, bool enabled)
+        {
+            if (hwnd == IntPtr.Zero) return;
+
+            int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+            style = enabled ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT;
+            SetWindowLong(hwnd, GWL_EXSTYLE, style);
+        }
     }
 }

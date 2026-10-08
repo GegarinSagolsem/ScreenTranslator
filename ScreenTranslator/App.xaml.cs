@@ -12,6 +12,7 @@ namespace ScreenTranslator
         private TaskbarIcon? _trayIcon;
         private AppConfig _config = new();
         private MainWindow? _overlay;
+        private GameBarWindow? _gameBar;
         private string? _lastNotice;
         private DateTime _lastNoticeAt;
 
@@ -39,7 +40,14 @@ namespace ScreenTranslator
             _overlay = new MainWindow(_config);
             MainWindow = _overlay;
             _overlay.Closed += (_, _) => Shutdown();
+            _overlay.GameBarRequested += () => _gameBar?.Toggle();
+            _overlay.UsageChanged += UpdateTrayToolTip;
             _overlay.Show();
+
+            _gameBar = new GameBarWindow(_config, _overlay);
+            _gameBar.ApplyMode(); // brings back a widget pinned last session
+
+            _ = _overlay.RefreshUsageAsync();
         }
 
         /// <summary>Shows a tray balloon; the same message is suppressed for a minute so errors can't spam.</summary>
@@ -53,9 +61,19 @@ namespace ScreenTranslator
             app._trayIcon.ShowBalloonTip(title, message, BalloonIcon.Warning);
         }
 
+        private void UpdateTrayToolTip()
+        {
+            var usage = _overlay?.Usage;
+            if (_trayIcon == null) return;
+
+            _trayIcon.ToolTipText = usage == null ? "ScreenTranslator"
+                : usage.Unlimited ? $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} characters used"
+                : $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} / {usage.CharacterLimit:N0} characters ({usage.Fraction:P0})";
+        }
+
         private void AddLanguageMenu()
         {
-            var menu = new MenuItem { Header = "Source language" };
+            var menu = _trayIcon!.ContextMenu.Items.OfType<MenuItem>().First(i => "LanguageMenu".Equals(i.Tag));
             for (int i = 0; i < Languages.All.Length; i++)
             {
                 int index = i;
@@ -69,8 +87,6 @@ namespace ScreenTranslator
                 for (int i = 0; i < menu.Items.Count; i++)
                     ((MenuItem)menu.Items[i]).IsChecked = _overlay?.CurrentLanguage == Languages.All[i];
             };
-
-            _trayIcon!.ContextMenu.Items.Insert(3, menu);
         }
 
         private void PromptForApiKey()
@@ -82,6 +98,10 @@ namespace ScreenTranslator
             _config.Save();
             _overlay?.RefreshApiKey();
         }
+
+        private void TrayGameBar_Click(object sender, RoutedEventArgs e) => _gameBar?.OpenBar();
+
+        private void TrayIcon_DoubleClick(object sender, RoutedEventArgs e) => _gameBar?.OpenBar();
 
         private void TrayReselect_Click(object sender, RoutedEventArgs e) => _overlay?.BeginSelection();
 

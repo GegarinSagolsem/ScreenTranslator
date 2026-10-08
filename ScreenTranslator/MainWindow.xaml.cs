@@ -11,6 +11,7 @@ namespace ScreenTranslator
     public partial class MainWindow : Window
     {
         private const double MinSelectionSize = 12;
+        private const int GameBarHotkeyId = 4;
 
         private static readonly Brush DimBrush = new SolidColorBrush(Color.FromArgb(0x44, 0, 0, 0));
 
@@ -49,13 +50,31 @@ namespace ScreenTranslator
             _statusTimer.Tick += (_, _) => { _statusTimer.Stop(); StatusPanel.Visibility = Visibility.Collapsed; };
 
             _translator.SetApiKey(config.GetApiKey());
+            _translator.SetGlossary(config.Glossary);
             ApplyLanguage(Languages.Find(config.SourceLanguage));
 
             SourceInitialized += MainWindow_SourceInitialized;
             Closed += MainWindow_Closed;
         }
 
+        /// <summary>Raised when region, pause or language state changes, so the game bar can redraw.</summary>
+        public event Action? TranslatorStateChanged;
+
+        public event Action? GameBarRequested;
+
+        public event Action? UsageChanged
+        {
+            add => _translator.UsageChanged += value;
+            remove => _translator.UsageChanged -= value;
+        }
+
         public SourceLanguage CurrentLanguage => _ocr.CurrentLanguage;
+        public bool IsChoosingRegion => _isChoosingRegion;
+        public bool IsPaused => _isPaused;
+        public bool HasRegion => !_selectedRegion.IsEmpty;
+        public DeepLUsage? Usage => _translator.Usage;
+
+        public Task RefreshUsageAsync() => _translator.RefreshUsageAsync();
 
         private void MainWindow_SourceInitialized(object? sender, EventArgs e)
         {
@@ -84,16 +103,15 @@ namespace ScreenTranslator
 
             void Register(int id, char key, Action action)
             {
-                const uint modifiers = NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT;
-                if (NativeMethods.RegisterHotKey(_hwnd, id, modifiers, key))
-                    _hotkeys[id] = action;
-                else
+                if (!TryRegisterHotkey(id, key, action))
                     failed.Add($"Ctrl+Shift+{key}");
             }
 
             Register(1, 'R', BeginSelection);
             Register(2, 'P', TogglePause);
             Register(3, 'O', CycleOpacity);
+            if (_config.GameBarHotkeyEnabled)
+                Register(GameBarHotkeyId, 'G', OpenGameBar);
             for (int i = 0; i < Languages.All.Length; i++)
             {
                 int index = i;
@@ -102,6 +120,35 @@ namespace ScreenTranslator
 
             if (failed.Count > 0)
                 App.Notify("Hotkeys unavailable", $"Another app is already using {string.Join(", ", failed)}. Use the tray menu instead.");
+        }
+
+        private bool TryRegisterHotkey(int id, char key, Action action)
+        {
+            const uint modifiers = NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT;
+            if (!NativeMethods.RegisterHotKey(_hwnd, id, modifiers, key))
+                return false;
+
+            _hotkeys[id] = action;
+            return true;
+        }
+
+        private void OpenGameBar() => GameBarRequested?.Invoke();
+
+        /// <summary>Registers or frees Ctrl+Shift+G to match the setting, so it can be given back to other apps.</summary>
+        public void UpdateGameBarHotkey()
+        {
+            bool registered = _hotkeys.ContainsKey(GameBarHotkeyId);
+            if (_config.GameBarHotkeyEnabled == registered || _hwnd == IntPtr.Zero) return;
+
+            if (!_config.GameBarHotkeyEnabled)
+            {
+                NativeMethods.UnregisterHotKey(_hwnd, GameBarHotkeyId);
+                _hotkeys.Remove(GameBarHotkeyId);
+            }
+            else if (!TryRegisterHotkey(GameBarHotkeyId, 'G', OpenGameBar))
+            {
+                App.Notify("Hotkey unavailable", "Another app is already using Ctrl+Shift+G. Open the game bar from the tray icon instead.");
+            }
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -133,6 +180,7 @@ namespace ScreenTranslator
                 : "Drag to select a new area  ·  Esc to keep the current one";
             SetChoosingRegion(true);
             Activate();
+            TranslatorStateChanged?.Invoke();
         }
 
         private void SetChoosingRegion(bool choosing)
@@ -143,9 +191,7 @@ namespace ScreenTranslator
             if (choosing) StatusPanel.Visibility = Visibility.Collapsed;
 
             // Click-through while translating, so the app underneath stays usable
-            int style = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-            style = choosing ? style & ~NativeMethods.WS_EX_TRANSPARENT : style | NativeMethods.WS_EX_TRANSPARENT;
-            NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, style);
+            NativeMethods.SetClickThrough(_hwnd, !choosing);
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
@@ -217,6 +263,7 @@ namespace ScreenTranslator
             SelectionBox.Stroke = Brushes.Red;
             ResetFrame();
             _captureTimer.Start();
+            TranslatorStateChanged?.Invoke();
         }
 
         #endregion
@@ -353,6 +400,7 @@ namespace ScreenTranslator
 
             SelectionBox.Stroke = _isPaused ? Brushes.Gray : Brushes.Red;
             ShowStatus(_isPaused ? "Paused" : "Resumed");
+            TranslatorStateChanged?.Invoke();
         }
 
         public void SetLanguage(int index)
@@ -362,6 +410,30 @@ namespace ScreenTranslator
             _config.SourceLanguage = language.OcrTag;
             _config.Save();
             ShowStatus($"{language.Name} → {_config.TargetLanguage}");
+            TranslatorStateChanged?.Invoke();
+        }
+
+        public void SetTargetLanguage(string code)
+        {
+            if (code == _config.TargetLanguage) return;
+
+            _config.TargetLanguage = code;
+            _config.Save();
+            _translator.SetLanguages(_ocr.CurrentLanguage.DeepLCode, code);
+            ResetFrame();
+            TranslatorStateChanged?.Invoke();
+        }
+
+        public void ApplyGlossary()
+        {
+            _translator.SetGlossary(_config.Glossary);
+            ResetFrame();
+        }
+
+        public void SetCaptureInterval(int milliseconds)
+        {
+            _config.CaptureIntervalMs = milliseconds;
+            _captureTimer.Interval = TimeSpan.FromMilliseconds(milliseconds);
         }
 
         private void ApplyLanguage(SourceLanguage language)
@@ -380,6 +452,7 @@ namespace ScreenTranslator
         {
             _translator.SetApiKey(_config.GetApiKey());
             ResetFrame();
+            _ = _translator.RefreshUsageAsync();
         }
 
         public void CycleOpacity()
@@ -387,11 +460,18 @@ namespace ScreenTranslator
             double opacity = _overlayBrush.Opacity - 0.25;
             if (opacity < 0.25) opacity = 1.0;
 
+            SetOpacity(opacity);
+            _config.Save();
+            ShowStatus($"Overlay opacity {opacity:P0}");
+            TranslatorStateChanged?.Invoke();
+        }
+
+        /// <summary>Applies immediately; the caller decides when to save, so slider drags don't hit the disk.</summary>
+        public void SetOpacity(double opacity)
+        {
             // Every overlay shares this brush, so existing labels update too
             _overlayBrush.Opacity = opacity;
             _config.OverlayOpacity = opacity;
-            _config.Save();
-            ShowStatus($"Overlay opacity {opacity:P0}");
         }
 
         private void ShowStatus(string message)

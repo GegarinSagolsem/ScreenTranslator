@@ -5,6 +5,9 @@ namespace ScreenTranslator
     /// <param name="NoSpaces">Script is written without spaces, so OCR word boxes are joined directly.</param>
     public record SourceLanguage(string OcrTag, string DeepLCode, string Name, bool NoSpaces);
 
+    /// <param name="Code">DeepL target_lang code.</param>
+    public record TargetLanguage(string Code, string Name);
+
     public static class Languages
     {
         // Order matters: index i is bound to Ctrl+Shift+(i+1)
@@ -13,6 +16,27 @@ namespace ScreenTranslator
             new("ja", "JA", "Japanese", NoSpaces: true),
             new("zh-Hans", "ZH", "Chinese (Simplified)", NoSpaces: true),
             new("ko", "KO", "Korean", NoSpaces: false),
+        ];
+
+        // Common DeepL targets; any other DeepL code still works via config.json
+        public static readonly TargetLanguage[] Targets =
+        [
+            new("EN-US", "English (US)"),
+            new("EN-GB", "English (UK)"),
+            new("ES", "Spanish"),
+            new("FR", "French"),
+            new("DE", "German"),
+            new("IT", "Italian"),
+            new("PT-BR", "Portuguese (Brazil)"),
+            new("RU", "Russian"),
+            new("PL", "Polish"),
+            new("NL", "Dutch"),
+            new("TR", "Turkish"),
+            new("UK", "Ukrainian"),
+            new("ID", "Indonesian"),
+            new("JA", "Japanese"),
+            new("KO", "Korean"),
+            new("ZH-HANS", "Chinese (Simplified)"),
         ];
 
         public static SourceLanguage Find(string ocrTag) =>
