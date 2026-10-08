@@ -7,6 +7,10 @@ novel page, an app without localisation) and translations are drawn right on top
 Text is read with the OCR engine built into Windows (offline, free) and translated with Google Translate
 out of the box, with no account or key needed. You can switch to DeepL or Google Cloud with your own key.
 
+![A game's Japanese dialogue translated in place](docs/images/overlay.png)
+
+<sub>The live overlay is hidden from screenshots by design (so it never re-reads its own labels), so these images are rendered with the app's own OCR, translation and drawing code.</sub>
+
 ## Features
 
 - **Works out of the box**: free Google translation with no signup. Bring your own DeepL or Google Cloud key if you want.
@@ -86,6 +90,8 @@ active translation service, and for DeepL, this month's usage.
 
 ### Game bar
 
+![The game bar](docs/images/gamebar.png)
+
 Press `Ctrl+Shift+G`, double-click the tray icon, or choose **Open game bar** from its menu. The screen
 dims and a home bar appears at the top with three widgets:
 
@@ -102,6 +108,8 @@ bar closes. It's then click-through, like pinned widgets in Xbox Game Bar.
 The bar is entirely optional: nothing appears unless you summon it, and you can turn its hotkey off.
 
 ### Vertical text
+
+![Vertical Japanese, original and translated](docs/images/vertical.png)
 
 Japanese vertical text is recognised automatically. For **vertical Chinese**, or for the most accurate
 reading of vertical Japanese, tick **Vertical text** in the Translator widget. ScreenTranslator then finds
