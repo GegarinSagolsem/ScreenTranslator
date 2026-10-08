@@ -24,7 +24,7 @@ namespace ScreenTranslator
         {
             canvas.Children.Clear();
 
-            var placements = blocks.Select(b => Place(b, region, dpi)).ToList();
+            var placements = blocks.Select((_, i) => Place(blocks, i, region, dpi)).ToList();
             for (int i = 0; i < blocks.Count; i++)
             {
                 var text = translations[i];
@@ -67,14 +67,26 @@ namespace ScreenTranslator
         /// <summary>Where a label goes, in DIPs. Labels keep this position and width range, and grow downwards.</summary>
         private readonly record struct Placement(double Left, double Top, double MinWidth, double MaxWidth);
 
-        private static Placement Place(OcrBlock block, Rect region, DpiScale dpi)
+        private static Placement Place(IReadOnlyList<OcrBlock> blocks, int index, Rect region, DpiScale dpi)
         {
+            var block = blocks[index];
             double top = region.Y + block.Bounds.Top / dpi.DpiScaleY;
 
             if (!block.Vertical)
             {
                 double left = region.X + block.FirstLine.Left / dpi.DpiScaleX;
-                double maxWidth = Math.Max(region.Right - left, 80);
+
+                // Grow rightwards to fit the translation, but stop before a block beside this one (two columns, UI)
+                double rightEdge = region.Right;
+                foreach (var other in blocks)
+                {
+                    bool sameRow = other.Bounds.Top < block.Bounds.Bottom && other.Bounds.Bottom > block.Bounds.Top;
+                    double otherLeft = region.X + other.Bounds.Left / dpi.DpiScaleX;
+                    if (other != block && sameRow && otherLeft > left)
+                        rightEdge = Math.Min(rightEdge, otherLeft - 4);
+                }
+
+                double maxWidth = Math.Max(rightEdge - left, 80);
                 double minWidth = Math.Min((block.Bounds.Right - block.FirstLine.Left) / dpi.DpiScaleX, maxWidth);
                 return new Placement(left, top, minWidth, maxWidth);
             }
