@@ -22,14 +22,15 @@ public sealed class OcrTests
         return ocr;
     }
 
-    private static Bitmap Horizontal(string[] lines, string font)
+    private static Bitmap Horizontal(string[] lines, string font, int size = 30)
     {
-        var bmp = new Bitmap(900, 60 + lines.Length * 50);
+        int pitch = (int)(size * 1.6); // typical line spacing
+        var bmp = new Bitmap(60 + lines.Max(l => l.Length) * (size + 4), 40 + lines.Length * pitch);
         using var g = Graphics.FromImage(bmp);
         g.Clear(Color.White);
-        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-        using var f = new Font(font, 30, GraphicsUnit.Pixel);
-        for (int i = 0; i < lines.Length; i++) g.DrawString(lines[i], f, Brushes.Black, 20, 20 + i * 50);
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        using var f = new Font(font, size, GraphicsUnit.Pixel);
+        for (int i = 0; i < lines.Length; i++) g.DrawString(lines[i], f, Brushes.Black, 20, 20 + i * pitch);
         return bmp;
     }
 
@@ -66,6 +67,19 @@ public sealed class OcrTests
 
         Assert.AreEqual("今日はいい天気ですね", Squash(string.Concat(blocks.Select(b => b.Text))));
         Assert.DoesNotContain(" ", blocks[0].Text);
+    }
+
+    [TestMethod]
+    [DataRow(1, "Microsoft YaHei UI", "我们今天去公园散步吧，天气很好。", 12)]
+    [DataRow(0, "Yu Gothic UI", "関門トンネルは本州と九州を結ぶ海底トンネルである。", 14)]
+    public async Task SmallTextIsReadAccurately(int language, string font, string text, int size)
+    {
+        var ocr = ReaderFor(Languages.All[language]);
+        using var image = Horizontal([text], font, size);
+
+        var blocks = await ocr.RecognizeAsync(image, mergeLines: true);
+
+        Assert.AreEqual(Squash(text), Squash(string.Concat(blocks.Select(b => b.Text))));
     }
 
     [TestMethod]

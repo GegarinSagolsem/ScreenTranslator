@@ -74,13 +74,39 @@ namespace ScreenTranslator
             return [.. horizontal, .. vertical];
         }
 
+        // Windows OCR misreads text under ~16 px. When a first pass finds only small text (or none),
+        // an enlarged copy is read too and usually wins.
+        private const double SmallTextHeight = 20;
+        private const double ComfortableTextHeight = 32;
+        private const double MaxEnlargedPixels = 16_000_000; // bounds the extra memory and OCR time
+
         private static async Task<List<OcrBlock>> RecognizeLinesAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)
         {
-            // The engine rejects images larger than MaxImageDimension, so shrink big regions
-            double scale = Math.Min(1.0, (double)OcrEngine.MaxImageDimension / Math.Max(bitmap.Width, bitmap.Height));
-            using var scaled = scale < 1.0
-                ? new Bitmap(bitmap, Math.Max(1, (int)(bitmap.Width * scale)), Math.Max(1, (int)(bitmap.Height * scale)))
-                : null;
+            var lines = await RecognizeAtScaleAsync(engine, bitmap, language, FitScale(bitmap, 1.0));
+
+            double typicalHeight = lines.Count == 0 ? 0 : lines.Select(l => l.LineHeight).Order().ElementAt(lines.Count / 2);
+            if (lines.Count > 0 && typicalHeight >= SmallTextHeight) return lines;
+
+            double wanted = lines.Count == 0 ? 3 : Math.Clamp(ComfortableTextHeight / typicalHeight, 1.5, 4);
+            double scale = FitScale(bitmap, wanted);
+            if (scale < 1.25) return lines;
+
+            // The enlarged read is the more accurate one; misread tiny text can even come out longer
+            // (garbage characters), so only fall back if enlarging lost a good part of the text
+            var enlarged = await RecognizeAtScaleAsync(engine, bitmap, language, scale);
+            return CharacterCount(enlarged) * 10 >= CharacterCount(lines) * 7 ? enlarged : lines;
+        }
+
+        /// <summary>The wanted scale, limited by the engine's maximum image size and a pixel budget.</summary>
+        private static double FitScale(Bitmap bitmap, double wanted) => Math.Min(wanted, Math.Min(
+            (double)OcrEngine.MaxImageDimension / Math.Max(bitmap.Width, bitmap.Height),
+            Math.Sqrt(MaxEnlargedPixels / ((double)bitmap.Width * bitmap.Height))));
+
+        private static int CharacterCount(IEnumerable<OcrBlock> lines) => lines.Sum(l => l.Text.Count(c => !char.IsWhiteSpace(c)));
+
+        private static async Task<List<OcrBlock>> RecognizeAtScaleAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language, double scale)
+        {
+            using var scaled = Math.Abs(scale - 1.0) < 0.01 ? null : Resize(bitmap, scale);
             var source = scaled ?? bitmap;
 
             var pixels = ScreenCapture.BitmapToBytes(source);
@@ -108,6 +134,17 @@ namespace ScreenTranslator
             }
 
             return lines;
+        }
+
+        private static Bitmap Resize(Bitmap source, double scale)
+        {
+            var resized = new Bitmap(Math.Max(1, (int)(source.Width * scale)), Math.Max(1, (int)(source.Height * scale)),
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(resized);
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic; // smooth edges read best
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            g.DrawImage(source, 0, 0, resized.Width, resized.Height);
+            return resized;
         }
 
         private static async Task<List<OcrBlock>> RecognizeColumnsAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)
