@@ -10,7 +10,6 @@ namespace ScreenTranslator
     public partial class MainWindow : Window
     {
         private const double MinSelectionSize = 12;
-        private const int GameBarHotkeyId = 4;
 
         private static readonly Brush DimBrush = new SolidColorBrush(Color.FromArgb(0x44, 0, 0, 0));
 
@@ -22,6 +21,7 @@ namespace ScreenTranslator
         private readonly DispatcherTimer _peekTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
         private readonly FrameGate _frameGate = new();
         private readonly Dictionary<int, Action> _hotkeys = new();
+        private int _peekKey;
         private readonly SolidColorBrush _overlayBrush;
         private IntPtr _hwnd;
 
@@ -91,58 +91,69 @@ namespace ScreenTranslator
             NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
 
             HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
-            RegisterHotkeys();
+
+            var failed = RegisterHotkeys();
+            if (failed.Count > 0)
+                App.Notify("Hotkeys unavailable", $"Another app is already using {string.Join(", ", failed)}. Change them in the game bar › Settings.");
         }
 
         private void MainWindow_Closed(object? sender, EventArgs e)
         {
             _captureTimer.Stop();
-            foreach (var id in _hotkeys.Keys)
-                NativeMethods.UnregisterHotKey(_hwnd, id);
+            UnregisterHotkeys();
             _translator.Dispose();
         }
 
         #region Hotkeys
 
-        private void RegisterHotkeys()
+        /// <summary>
+        /// (Re)registers every configured hotkey. Returns the ones that couldn't be taken, usually
+        /// because another app already uses that combination.
+        /// </summary>
+        public IReadOnlyList<string> RegisterHotkeys()
         {
+            UnregisterHotkeys();
             var failed = new List<string>();
 
-            void Register(int id, char key, Action action)
+            int id = 1;
+            foreach (var command in HotkeyCommands.All)
             {
-                if (!TryRegisterHotkey(id, key, action))
-                    failed.Add($"Ctrl+Shift+{key}");
+                var hotkey = _config.GetHotkey(command.Id);
+                if (!hotkey.IsNone)
+                {
+                    if (NativeMethods.RegisterHotKey(_hwnd, id, hotkey.Win32Modifiers, hotkey.VirtualKey))
+                        _hotkeys[id] = ActionFor(command.Id);
+                    else
+                        failed.Add($"{hotkey} ({command.Label})");
+                }
+                id++;
             }
 
-            Register(1, 'R', BeginSelection);
-            Register(2, 'P', TogglePause);
-            Register(3, 'O', CycleOpacity);
-            Register(5, 'H', BeginPeek);
-            if (_config.GameBarHotkeyEnabled)
-                Register(GameBarHotkeyId, 'G', OpenGameBar);
-            for (int i = 0; i < Languages.All.Length; i++)
-            {
-                int index = i;
-                Register(10 + i, (char)('1' + i), () => SetLanguage(index));
-            }
-
+            _peekKey = (int)_config.GetHotkey(HotkeyCommands.Peek).VirtualKey;
             if (failed.Count > 0)
-                App.Notify("Hotkeys unavailable", $"Another app is already using {string.Join(", ", failed)}. Use the tray menu instead.");
+                Log.Warn($"Hotkeys already taken by other apps: {string.Join(", ", failed)}");
+            return failed;
         }
 
-        private bool TryRegisterHotkey(int id, char key, Action action)
+        /// <summary>Frees every hotkey, e.g. while the user is typing a new combination in Settings.</summary>
+        public void UnregisterHotkeys()
         {
-            const uint modifiers = NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT;
-            if (!NativeMethods.RegisterHotKey(_hwnd, id, modifiers, key))
-                return false;
-
-            _hotkeys[id] = action;
-            return true;
+            foreach (var id in _hotkeys.Keys)
+                NativeMethods.UnregisterHotKey(_hwnd, id);
+            _hotkeys.Clear();
         }
 
-        private void OpenGameBar() => GameBarRequested?.Invoke();
+        private Action ActionFor(string commandId) => commandId switch
+        {
+            HotkeyCommands.GameBar => () => GameBarRequested?.Invoke(),
+            HotkeyCommands.SelectRegion => BeginSelection,
+            HotkeyCommands.PauseResume => TogglePause,
+            HotkeyCommands.CycleOpacity => CycleOpacity,
+            HotkeyCommands.Peek => BeginPeek,
+            _ => () => SetLanguage(Array.FindIndex(Languages.All, l => HotkeyCommands.LanguagePrefix + l.OcrTag == commandId))
+        };
 
-        // RegisterHotKey only reports the key going down, so watch for H coming back up
+        // RegisterHotKey only reports the key going down, so watch for the peek key coming back up
         private void BeginPeek()
         {
             if (_peekTimer.IsEnabled) return;
@@ -153,27 +164,10 @@ namespace ScreenTranslator
 
         private void PeekTimer_Tick(object? sender, EventArgs e)
         {
-            if ((NativeMethods.GetAsyncKeyState('H') & 0x8000) != 0) return; // still held
+            if ((NativeMethods.GetAsyncKeyState(_peekKey) & 0x8000) != 0) return; // still held
 
             _peekTimer.Stop();
             TranslationCanvas.Visibility = Visibility.Visible;
-        }
-
-        /// <summary>Registers or frees Ctrl+Shift+G to match the setting, so it can be given back to other apps.</summary>
-        public void UpdateGameBarHotkey()
-        {
-            bool registered = _hotkeys.ContainsKey(GameBarHotkeyId);
-            if (_config.GameBarHotkeyEnabled == registered || _hwnd == IntPtr.Zero) return;
-
-            if (!_config.GameBarHotkeyEnabled)
-            {
-                NativeMethods.UnregisterHotKey(_hwnd, GameBarHotkeyId);
-                _hotkeys.Remove(GameBarHotkeyId);
-            }
-            else if (!TryRegisterHotkey(GameBarHotkeyId, 'G', OpenGameBar))
-            {
-                App.Notify("Hotkey unavailable", "Another app is already using Ctrl+Shift+G. Open the game bar from the tray icon instead.");
-            }
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

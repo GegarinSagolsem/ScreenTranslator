@@ -41,6 +41,7 @@ namespace ScreenTranslator
 
             Width = SystemParameters.PrimaryScreenWidth;
             Height = SystemParameters.PrimaryScreenHeight;
+            SettingsScroll.MaxHeight = Math.Max(240, Height - 120); // leave room for the header and home bar
 
             _widgets =
             [
@@ -61,6 +62,7 @@ namespace ScreenTranslator
             UpdateGlossaryEmpty();
 
             ServiceBox.ItemsSource = TranslationServiceInfo.All;
+            BuildHotkeyRows();
 
             RestoreLayout();
             RefreshState();
@@ -303,7 +305,6 @@ namespace ScreenTranslator
                 TextSizeValue.Text = $"{_config.TextScale:P0}";
                 IntervalSlider.Value = _config.CaptureIntervalMs;
                 IntervalValue.Text = $"{_config.CaptureIntervalMs} ms";
-                HotkeyCheck.IsChecked = _config.GameBarHotkeyEnabled;
                 MergeLinesCheck.IsChecked = _config.MergeLines;
 
                 var service = TranslationServiceInfo.Of(_config.ActiveService);
@@ -491,13 +492,140 @@ namespace ScreenTranslator
             if (!_syncing) _overlay.SetMergeLines(MergeLinesCheck.IsChecked == true);
         }
 
-        private void HotkeyCheck_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_syncing) return;
+        #endregion
+        #region Hotkey editing
 
-            _config.GameBarHotkeyEnabled = HotkeyCheck.IsChecked == true;
+        private readonly Dictionary<string, TextBox> _hotkeyBoxes = new();
+
+        private void BuildHotkeyRows()
+        {
+            foreach (var command in HotkeyCommands.All)
+            {
+                var box = new TextBox
+                {
+                    IsReadOnly = true,
+                    IsReadOnlyCaretVisible = false,
+                    Width = 150,
+                    FontSize = 12,
+                    Cursor = Cursors.Hand,
+                    Tag = command,
+                    ToolTip = "Click, then press the new key combination"
+                };
+                box.GotKeyboardFocus += HotkeyBox_GotKeyboardFocus;
+                box.LostKeyboardFocus += HotkeyBox_LostKeyboardFocus;
+                box.PreviewKeyDown += HotkeyBox_PreviewKeyDown;
+                _hotkeyBoxes[command.Id] = box;
+
+                var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+                DockPanel.SetDock(box, Dock.Right);
+                row.Children.Add(box);
+                row.Children.Add(new TextBlock
+                {
+                    Text = command.Label,
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = (Brush)FindResource("SubtleTextBrush")
+                });
+                HotkeyRows.Children.Add(row);
+            }
+
+            RefreshHotkeyRows();
+        }
+
+        private void RefreshHotkeyRows()
+        {
+            foreach (var (id, box) in _hotkeyBoxes)
+            {
+                var hotkey = _config.GetHotkey(id);
+                box.Text = hotkey.IsNone ? "Off" : hotkey.ToString();
+            }
+        }
+
+        private void HotkeyBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            // Free the hotkeys first, or pressing e.g. Ctrl+Shift+R here would select a region instead of recording it
+            _overlay.UnregisterHotkeys();
+            ((TextBox)sender).Text = "Press keys…";
+            ShowHotkeyStatus(null);
+        }
+
+        private void HotkeyBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            RefreshHotkeyRows();
+            var failed = _overlay.RegisterHotkeys();
+            if (failed.Count > 0)
+                ShowHotkeyStatus($"Already used by another app: {string.Join(", ", failed)}. Pick a different combination.");
+        }
+
+        private void HotkeyBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            e.Handled = true;
+            var box = (TextBox)sender;
+            var command = (HotkeyCommand)box.Tag;
+            var key = e.Key == Key.System ? e.SystemKey : e.Key; // Alt combinations arrive as Key.System
+            var modifiers = Keyboard.Modifiers;
+
+            if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
+                    or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin)
+            {
+                box.Text = Hotkey.Pending(modifiers);
+                return;
+            }
+
+            if (modifiers == ModifierKeys.None && key == Key.Escape)
+            {
+                Keyboard.Focus(this);
+                return;
+            }
+
+            if (modifiers == ModifierKeys.None && key is Key.Back or Key.Delete)
+            {
+                SaveHotkey(command, "");
+                Keyboard.Focus(this);
+                return;
+            }
+
+            var hotkey = new Hotkey(modifiers, key);
+            if (!hotkey.IsSafeGlobal)
+            {
+                box.Text = "Press keys…";
+                ShowHotkeyStatus("Add Ctrl, Alt or Win (or use an F-key), so the hotkey doesn't block normal typing.");
+                return;
+            }
+
+            var clash = HotkeyCommands.All.FirstOrDefault(c => c.Id != command.Id && _config.GetHotkey(c.Id) == hotkey);
+            if (clash != null)
+            {
+                box.Text = "Press keys…";
+                ShowHotkeyStatus($"{hotkey} is already used for \"{clash.Label}\".");
+                return;
+            }
+
+            SaveHotkey(command, hotkey.ToString());
+            Keyboard.Focus(this);
+        }
+
+        private void SaveHotkey(HotkeyCommand command, string keys)
+        {
+            _config.Hotkeys[command.Id] = keys;
             _config.Save();
-            _overlay.UpdateGameBarHotkey();
+            Log.Info($"Hotkey for {command.Id}: {(keys.Length == 0 ? "off" : keys)}");
+        }
+
+        private void ResetHotkeys_Click(object sender, RoutedEventArgs e)
+        {
+            _config.Hotkeys.Clear();
+            _config.Save();
+            RefreshHotkeyRows();
+            var failed = _overlay.RegisterHotkeys();
+            ShowHotkeyStatus(failed.Count > 0 ? $"Already used by another app: {string.Join(", ", failed)}." : null);
+        }
+
+        private void ShowHotkeyStatus(string? message)
+        {
+            HotkeyStatus.Text = message ?? "";
+            HotkeyStatus.Visibility = message == null ? Visibility.Collapsed : Visibility.Visible;
         }
 
         #endregion

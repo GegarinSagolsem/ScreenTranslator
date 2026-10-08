@@ -19,8 +19,15 @@ namespace ScreenTranslator
         public double OverlayOpacity { get; set; } = 0.75;
         public double TextScale { get; set; } = 1.0;
         public int CaptureIntervalMs { get; set; } = 500;
-        public bool GameBarHotkeyEnabled { get; set; } = true;
         public bool MergeLines { get; set; } = true;
+
+        /// <summary>Command id → "Ctrl+Shift+R". Missing means the default; "" means turned off.</summary>
+        public Dictionary<string, string> Hotkeys { get; set; } = new();
+
+        /// <summary>Read from older configs only (replaced by clearing the GameBar hotkey).</summary>
+        [JsonPropertyName("GameBarHotkeyEnabled")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? LegacyGameBarHotkeyEnabled { get; set; }
         public List<GlossaryEntry> Glossary { get; set; } = new();
         public Dictionary<string, WidgetState> GameBarWidgets { get; set; } = new();
 
@@ -55,6 +62,11 @@ namespace ScreenTranslator
             };
         }
 
+        public Hotkey GetHotkey(string commandId) =>
+            Hotkey.Parse(Hotkeys.TryGetValue(commandId, out var keys)
+                ? keys
+                : HotkeyCommands.All.FirstOrDefault(c => c.Id == commandId)?.DefaultKeys);
+
         public void SetApiKey(TranslationService service, string key)
         {
             if (service == TranslationService.DeepL) DeepLApiKey = key.Trim();
@@ -81,6 +93,11 @@ namespace ScreenTranslator
             config.CaptureIntervalMs = Math.Clamp(config.CaptureIntervalMs, 200, 2000);
             config.Glossary ??= new();
             config.GameBarWidgets ??= new();
+            config.Hotkeys ??= new();
+
+            if (config.LegacyGameBarHotkeyEnabled == false)
+                config.Hotkeys.TryAdd(HotkeyCommands.GameBar, "");
+            config.LegacyGameBarHotkeyEnabled = null;
 
             // Older configs only knew DeepL: keep anyone who set a key on it, everyone else gets free Google
             config.Service ??= string.IsNullOrWhiteSpace(config.GetApiKey(TranslationService.DeepL))

@@ -42,6 +42,7 @@ namespace ScreenTranslator
             _config = AppConfig.Load();
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
             AddLanguageMenu();
+            _trayIcon.ContextMenu.Opened += (_, _) => ShowHotkeysInMenu(_trayIcon.ContextMenu.Items);
 
             Log.Info($"Translation service: {_config.ActiveService}");
 
@@ -86,13 +87,24 @@ namespace ScreenTranslator
             };
         }
 
+        /// <summary>Shows each item's current (user-configurable) hotkey next to it.</summary>
+        private void ShowHotkeysInMenu(ItemCollection items)
+        {
+            foreach (var item in items.OfType<MenuItem>())
+            {
+                if (item.Tag is string id && id != "LanguageMenu")
+                    item.InputGestureText = _config.GetHotkey(id).ToString();
+                ShowHotkeysInMenu(item.Items);
+            }
+        }
+
         private void AddLanguageMenu()
         {
             var menu = _trayIcon!.ContextMenu.Items.OfType<MenuItem>().First(i => "LanguageMenu".Equals(i.Tag));
             for (int i = 0; i < Languages.All.Length; i++)
             {
                 int index = i;
-                var item = new MenuItem { Header = Languages.All[i].Name, InputGestureText = $"Ctrl+Shift+{i + 1}" };
+                var item = new MenuItem { Header = Languages.All[i].Name, Tag = HotkeyCommands.LanguagePrefix + Languages.All[i].OcrTag };
                 item.Click += (_, _) => _overlay?.SetLanguage(index);
                 menu.Items.Add(item);
             }
