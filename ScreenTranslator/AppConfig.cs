@@ -74,13 +74,15 @@ namespace ScreenTranslator
             else if (service == TranslationService.GoogleCloud) GoogleCloudApiKey = key.Trim();
         }
 
-        public static AppConfig Load()
+        public static AppConfig Load() => LoadFrom(ConfigPath);
+
+        internal static AppConfig LoadFrom(string path)
         {
             AppConfig config;
             try
             {
-                config = File.Exists(ConfigPath)
-                    ? JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath)) ?? new AppConfig()
+                config = File.Exists(path)
+                    ? JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path)) ?? new AppConfig()
                     : new AppConfig();
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)

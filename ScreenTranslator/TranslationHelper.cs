@@ -39,15 +39,21 @@ namespace ScreenTranslator
     {
         private const int MaxCacheEntries = 2000;
 
-        private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+        private readonly HttpClient _http;
         private readonly Dictionary<string, string> _cache = new();
         private readonly DeepLClient _deepL;
         private ITranslationClient _client;
         private SourceLanguage _source = Languages.All[0];
         private string _target = "EN-US";
 
-        public TranslationHelper()
+        public TranslationHelper() : this(new HttpClientHandler())
         {
+        }
+
+        /// <summary>Tests pass a fake handler so no real requests are made.</summary>
+        internal TranslationHelper(HttpMessageHandler handler)
+        {
+            _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
             _deepL = new DeepLClient(_http);
             _deepL.UsageChanged += () => UsageChanged?.Invoke();
             _client = new GoogleFreeClient(_http);

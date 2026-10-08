@@ -158,9 +158,9 @@ namespace ScreenTranslator
 
         private static System.Windows.Rect TurnBack(System.Windows.Rect r) => new(-r.Y - r.Height, r.X, r.Height, r.Width);
 
-        private static OcrBlock Transpose(OcrBlock b) => b with { Bounds = Turn(b.Bounds), Lines = b.Lines.Select(Turn).ToList() };
+        internal static OcrBlock Transpose(OcrBlock b) => b with { Bounds = Turn(b.Bounds), Lines = b.Lines.Select(Turn).ToList() };
 
-        private static OcrBlock Untranspose(OcrBlock b) =>
+        internal static OcrBlock Untranspose(OcrBlock b) =>
             b with { Bounds = TurnBack(b.Bounds), Lines = b.Lines.Select(TurnBack).ToList(), Vertical = true };
 
         /// <summary>
