@@ -35,6 +35,9 @@ namespace ScreenTranslator
         private bool _isProcessing;
         private string? _drawnSignature; // text + positions on screen; null forces a redraw
 
+        // What's on screen, so a text size change can re-lay it out without another OCR pass
+        private (IReadOnlyList<OcrBlock> Blocks, IReadOnlyList<string?> Translations, Rect Region, DpiScale Dpi)? _drawn;
+
         // Bumped whenever region/language/key changes so in-flight frames get discarded
         private int _settingsVersion;
 
@@ -75,6 +78,7 @@ namespace ScreenTranslator
         public bool IsChoosingRegion => _isChoosingRegion;
         public bool IsPaused => _isPaused;
         public bool HasRegion => !_selectedRegion.IsEmpty;
+        public double TextScale => _config.TextScale;
         public DeepLUsage? Usage => _translator.Usage;
 
         public Task RefreshUsageAsync() => _translator.RefreshUsageAsync();
@@ -195,6 +199,7 @@ namespace ScreenTranslator
                 _previousRegion = _selectedRegion;
 
             TranslationCanvas.Children.Clear();
+            _drawn = null;
             SelectionBox.Visibility = Visibility.Collapsed;
             HintText.Text = _previousRegion.IsEmpty
                 ? "Drag to select the area to translate"
@@ -345,6 +350,7 @@ namespace ScreenTranslator
             if (blocks.Count == 0)
             {
                 TranslationCanvas.Children.Clear(); // text is gone, so drop stale overlays
+                _drawn = null;
                 _drawnSignature = signature;
                 return;
             }
@@ -353,8 +359,15 @@ namespace ScreenTranslator
             if (version != _settingsVersion) return;
 
             // Swap all overlays at once so they don't flicker in line by line
-            TranslationLayout.Draw(TranslationCanvas, blocks, translations, region, dpi, _overlayBrush);
+            _drawn = (blocks, translations, region, dpi);
+            RedrawLabels();
             _drawnSignature = signature;
+        }
+
+        private void RedrawLabels()
+        {
+            if (_drawn is { } d)
+                TranslationLayout.Draw(TranslationCanvas, d.Blocks, d.Translations, d.Region, d.Dpi, _overlayBrush, _config.TextScale);
         }
 
         private async Task<IReadOnlyList<OcrBlock>?> CaptureAndRecognizeAsync(int x, int y, int width, int height, bool mergeLines)
@@ -467,6 +480,21 @@ namespace ScreenTranslator
             SetOpacity(opacity);
             _config.Save();
             ShowStatus($"Background opacity {opacity:P0}");
+            TranslatorStateChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Scales the translation text (1.0 = automatic size, matched to the original text). Labels on
+        /// screen re-lay out straight away. <paramref name="save"/> is false for slider drags, which save on close.
+        /// </summary>
+        public void SetTextScale(double scale, bool save = true)
+        {
+            _config.TextScale = Math.Clamp(Math.Round(scale, 2), TranslationLayout.MinTextScale, TranslationLayout.MaxTextScale);
+            RedrawLabels();
+            if (!save) return;
+
+            _config.Save();
+            ShowStatus($"Text size {_config.TextScale:P0}");
             TranslatorStateChanged?.Invoke();
         }
 

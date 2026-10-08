@@ -10,6 +10,7 @@ namespace ScreenTranslator
         public string SourceLanguage { get; set; } = "ja";
         public string TargetLanguage { get; set; } = "EN-US";
         public double OverlayOpacity { get; set; } = 0.75;
+        public double TextScale { get; set; } = 1.0;
         public int CaptureIntervalMs { get; set; } = 500;
         public bool GameBarHotkeyEnabled { get; set; } = true;
         public bool MergeLines { get; set; } = true;
@@ -46,6 +47,7 @@ namespace ScreenTranslator
             }
 
             config.OverlayOpacity = Math.Clamp(config.OverlayOpacity, 0.0, 1.0);
+            config.TextScale = Math.Clamp(config.TextScale, TranslationLayout.MinTextScale, TranslationLayout.MaxTextScale);
             config.CaptureIntervalMs = Math.Clamp(config.CaptureIntervalMs, 200, 2000);
             config.Glossary ??= new();
             config.GameBarWidgets ??= new();

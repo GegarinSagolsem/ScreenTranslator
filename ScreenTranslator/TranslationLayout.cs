@@ -11,11 +11,16 @@ namespace ScreenTranslator
     /// </summary>
     public static class TranslationLayout
     {
+        public const double MinTextScale = 0.5;
+        public const double MaxTextScale = 2.0;
+
         private const double MinFontSize = 10;
         private const double MaxFontSize = 28;
+        private const double SmallestFontSize = 7; // floor even at the smallest text size setting
 
+        /// <param name="textScale">The user's text size setting, multiplying the automatic font size.</param>
         public static void Draw(Canvas canvas, IReadOnlyList<OcrBlock> blocks, IReadOnlyList<string?> translations,
-                                Rect region, DpiScale dpi, Brush background)
+                                Rect region, DpiScale dpi, Brush background, double textScale = 1.0)
         {
             canvas.Children.Clear();
 
@@ -25,7 +30,7 @@ namespace ScreenTranslator
                 if (string.IsNullOrWhiteSpace(text)) continue;
 
                 double maxBottom = RoomBelow(blocks, i, region, dpi);
-                var label = CreateLabel(text, blocks[i], maxBottom, region, dpi, background);
+                var label = CreateLabel(text, blocks[i], maxBottom, region, dpi, background, textScale);
                 canvas.Children.Add(label);
                 CoverLinesLeftOf(canvas, blocks[i], Canvas.GetLeft(label), region, dpi, background);
             }
@@ -73,7 +78,8 @@ namespace ScreenTranslator
             return region.Y + bottom / dpi.DpiScaleY;
         }
 
-        private static Border CreateLabel(string text, OcrBlock block, double maxBottom, Rect region, DpiScale dpi, Brush background)
+        private static Border CreateLabel(string text, OcrBlock block, double maxBottom, Rect region, DpiScale dpi,
+                                          Brush background, double textScale)
         {
             double left = region.X + block.FirstLine.Left / dpi.DpiScaleX;
             double top = region.Y + block.Bounds.Top / dpi.DpiScaleY;
@@ -93,15 +99,17 @@ namespace ScreenTranslator
                 Child = content
             };
 
-            // Start near the source text's size, then shrink until the label fits above the next block
-            double fontSize = Math.Clamp(block.LineHeight / dpi.DpiScaleY * 0.8, MinFontSize, MaxFontSize);
+            // Start near the source text's size (scaled by the user's text size), then shrink until the
+            // label fits above the next block, but never below the chosen size's floor
+            double minFontSize = Math.Max(SmallestFontSize, MinFontSize * textScale);
+            double fontSize = Math.Clamp(block.LineHeight / dpi.DpiScaleY * 0.8, MinFontSize, MaxFontSize) * textScale;
             while (true)
             {
                 content.FontSize = fontSize;
                 label.InvalidateMeasure(); // Border would otherwise reuse its last measurement
                 label.Measure(new Size(maxWidth, double.PositiveInfinity));
-                if (label.DesiredSize.Height <= maxHeight || fontSize <= MinFontSize) break;
-                fontSize = Math.Max(MinFontSize, fontSize - 1);
+                if (label.DesiredSize.Height <= maxHeight || fontSize <= minFontSize) break;
+                fontSize = Math.Max(minFontSize, fontSize - 1);
             }
 
             Canvas.SetLeft(label, left);

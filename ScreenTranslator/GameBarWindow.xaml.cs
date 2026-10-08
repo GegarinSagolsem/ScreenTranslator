@@ -298,6 +298,8 @@ namespace ScreenTranslator
 
                 OpacitySlider.Value = _config.OverlayOpacity;
                 OpacityValue.Text = $"{_config.OverlayOpacity:P0}";
+                TextSizeSlider.Value = _config.TextScale;
+                TextSizeValue.Text = $"{_config.TextScale:P0}";
                 IntervalSlider.Value = _config.CaptureIntervalMs;
                 IntervalValue.Text = $"{_config.CaptureIntervalMs} ms";
                 HotkeyCheck.IsChecked = _config.GameBarHotkeyEnabled;
@@ -360,6 +362,14 @@ namespace ScreenTranslator
 
             _overlay.SetOpacity(e.NewValue);
             OpacityValue.Text = $"{e.NewValue:P0}";
+        }
+
+        private void TextSize_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_syncing) return;
+
+            _overlay.SetTextScale(e.NewValue, save: false);
+            TextSizeValue.Text = $"{e.NewValue:P0}";
         }
 
         #endregion

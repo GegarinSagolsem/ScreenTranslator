@@ -109,6 +109,12 @@ namespace ScreenTranslator
 
         private void TrayOpacity_Click(object sender, RoutedEventArgs e) => _overlay?.CycleOpacity();
 
+        private void TrayTextLarger_Click(object sender, RoutedEventArgs e) => _overlay?.SetTextScale(_overlay.TextScale + 0.1);
+
+        private void TrayTextSmaller_Click(object sender, RoutedEventArgs e) => _overlay?.SetTextScale(_overlay.TextScale - 0.1);
+
+        private void TrayTextReset_Click(object sender, RoutedEventArgs e) => _overlay?.SetTextScale(1.0);
+
         private void TrayApiKey_Click(object sender, RoutedEventArgs e) => PromptForApiKey();
 
         private void TrayExit_Click(object sender, RoutedEventArgs e) => Shutdown();

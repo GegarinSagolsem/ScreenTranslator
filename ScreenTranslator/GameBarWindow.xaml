@@ -193,6 +193,15 @@
                         <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{StaticResource SubtleTextBrush}"
                                    Text="Text always stays fully visible."/>
 
+                        <DockPanel Margin="0,12,0,0">
+                            <TextBlock x:Name="TextSizeValue" DockPanel.Dock="Right" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock Text="Text size" Foreground="{StaticResource SubtleTextBrush}"
+                                       ToolTip="100 % matches the size of the original text. Translations still shrink a little where space is tight."/>
+                        </DockPanel>
+                        <Slider x:Name="TextSizeSlider" Margin="0,4,0,0" Minimum="0.5" Maximum="2"
+                                SmallChange="0.1" LargeChange="0.25" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                ValueChanged="TextSize_Changed"/>
+
                         <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,14"/>
 
                         <DockPanel>
