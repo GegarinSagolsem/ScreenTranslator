@@ -43,15 +43,16 @@ namespace ScreenTranslator
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
             AddLanguageMenu();
 
-            if (_config.GetApiKey().Length == 0)
-                PromptForApiKey();
+            Log.Info($"Translation service: {_config.ActiveService}");
 
             _overlay = new MainWindow(_config);
             MainWindow = _overlay;
             _overlay.Closed += (_, _) => Shutdown();
             _overlay.GameBarRequested += () => _gameBar?.Toggle();
             _overlay.UsageChanged += UpdateTrayToolTip;
+            _overlay.TranslatorStateChanged += UpdateTrayToolTip;
             _overlay.Show();
+            UpdateTrayToolTip();
 
             _gameBar = new GameBarWindow(_config, _overlay);
             _gameBar.ApplyMode(); // brings back a widget pinned last session
@@ -72,12 +73,17 @@ namespace ScreenTranslator
 
         private void UpdateTrayToolTip()
         {
-            var usage = _overlay?.Usage;
-            if (_trayIcon == null) return;
+            if (_trayIcon == null || _overlay == null) return;
 
-            _trayIcon.ToolTipText = usage == null ? "ScreenTranslator"
-                : usage.Unlimited ? $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} characters used"
-                : $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} / {usage.CharacterLimit:N0} characters ({usage.Fraction:P0})";
+            var usage = _overlay.Usage;
+            _trayIcon.ToolTipText = _overlay.Service switch
+            {
+                TranslationService.DeepL when usage is { Unlimited: true } => $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} characters used",
+                TranslationService.DeepL when usage != null => $"ScreenTranslator\nDeepL: {usage.CharacterCount:N0} / {usage.CharacterLimit:N0} characters ({usage.Fraction:P0})",
+                TranslationService.DeepL => "ScreenTranslator\nDeepL",
+                TranslationService.GoogleCloud => "ScreenTranslator\nGoogle Cloud Translation",
+                _ => "ScreenTranslator\nGoogle Translate (free)"
+            };
         }
 
         private void AddLanguageMenu()
@@ -98,16 +104,6 @@ namespace ScreenTranslator
             };
         }
 
-        private void PromptForApiKey()
-        {
-            var dialog = new ApiKeyWindow(_config.DeepLApiKey);
-            if (dialog.ShowDialog() != true) return;
-
-            _config.DeepLApiKey = dialog.ApiKey;
-            _config.Save();
-            _overlay?.RefreshApiKey();
-        }
-
         private void TrayGameBar_Click(object sender, RoutedEventArgs e) => _gameBar?.OpenBar();
 
         private void TrayIcon_DoubleClick(object sender, RoutedEventArgs e) => _gameBar?.OpenBar();
@@ -124,7 +120,7 @@ namespace ScreenTranslator
 
         private void TrayTextReset_Click(object sender, RoutedEventArgs e) => _overlay?.SetTextScale(1.0);
 
-        private void TrayApiKey_Click(object sender, RoutedEventArgs e) => PromptForApiKey();
+        private void TrayTranslationSettings_Click(object sender, RoutedEventArgs e) => _gameBar?.OpenBar(showSettings: true);
 
         private void TrayOpenLog_Click(object sender, RoutedEventArgs e)
         {

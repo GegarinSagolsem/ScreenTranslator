@@ -206,10 +206,11 @@
 
                         <DockPanel>
                             <TextBlock x:Name="UsagePercent" DockPanel.Dock="Right" FontWeight="SemiBold"/>
-                            <TextBlock Text="DeepL usage this month" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock x:Name="UsageTitle" Text="DeepL usage this month" Foreground="{StaticResource SubtleTextBrush}"/>
                         </DockPanel>
                         <ProgressBar x:Name="UsageBar" Margin="0,8,0,0" Minimum="0" Maximum="1"/>
-                        <TextBlock x:Name="UsageText" Margin="0,6,0,0" FontSize="12" Foreground="{StaticResource SubtleTextBrush}"/>
+                        <TextBlock x:Name="UsageText" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource SubtleTextBrush}"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -230,6 +231,8 @@
                     <StackPanel Margin="16,14,16,16">
                         <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource SubtleTextBrush}"
                                    Text="Terms listed here always translate exactly as written. Use it for character names, places and game jargon."/>
+                        <TextBlock x:Name="GlossaryServiceNote" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" Foreground="#FCE100"
+                                   Text="The glossary needs DeepL. Choose DeepL as the translation service in Settings to apply these terms."/>
 
                         <Grid Margin="0,14,40,6">
                             <Grid.ColumnDefinitions>
@@ -294,13 +297,28 @@
                     </Border>
 
                     <StackPanel Margin="16,0,16,16">
-                        <TextBlock Style="{StaticResource FieldLabel}" Text="DeepL API key"/>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Margin="8,0,0,0" MinWidth="70" Content="Save" Click="SaveKey_Click"/>
-                            <PasswordBox x:Name="ApiKeyBox"/>
-                        </DockPanel>
-                        <TextBlock x:Name="KeyStatus" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
-                                   Foreground="{StaticResource SubtleTextBrush}" Text="Stored only on this PC."/>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Translation service"/>
+                        <ComboBox x:Name="ServiceBox" DisplayMemberPath="Name" HorizontalAlignment="Stretch"
+                                  SelectionChanged="Service_Changed"/>
+                        <TextBlock x:Name="ServiceDescription" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource SubtleTextBrush}"/>
+
+                        <StackPanel x:Name="KeyPanel">
+                            <DockPanel Margin="0,14,0,6">
+                                <TextBlock DockPanel.Dock="Right" FontSize="12">
+                                    <Hyperlink x:Name="KeyLink" Foreground="{StaticResource AccentBrush}" RequestNavigate="KeyLink_RequestNavigate">
+                                        Get a key
+                                    </Hyperlink>
+                                </TextBlock>
+                                <TextBlock x:Name="KeyLabel" Text="Your API key" Foreground="{StaticResource SubtleTextBrush}"/>
+                            </DockPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Margin="8,0,0,0" MinWidth="70" Content="Save" Click="SaveKey_Click"/>
+                                <PasswordBox x:Name="ApiKeyBox"/>
+                            </DockPanel>
+                            <TextBlock x:Name="KeyStatus" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{StaticResource SubtleTextBrush}" Text="Stored only on this PC."/>
+                        </StackPanel>
 
                         <DockPanel Margin="0,16,0,0">
                             <TextBlock x:Name="IntervalValue" DockPanel.Dock="Right" Foreground="{StaticResource SubtleTextBrush}"/>

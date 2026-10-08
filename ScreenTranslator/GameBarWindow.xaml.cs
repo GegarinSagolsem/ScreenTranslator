@@ -60,9 +60,7 @@ namespace ScreenTranslator
             GlossaryList.ItemsSource = _glossary;
             UpdateGlossaryEmpty();
 
-            ApiKeyBox.Password = config.DeepLApiKey;
-            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DEEPL_API_KEY")))
-                KeyStatus.Text = "The DEEPL_API_KEY environment variable is set and overrides this key.";
+            ServiceBox.ItemsSource = TranslationServiceInfo.All;
 
             RestoreLayout();
             RefreshState();
@@ -89,8 +87,11 @@ namespace ScreenTranslator
             else OpenBar();
         }
 
-        public void OpenBar()
+        /// <param name="showSettings">Also opens the Settings widget, e.g. from the tray's "Translation settings".</param>
+        public void OpenBar(bool showSettings = false)
         {
+            if (showSettings)
+                SettingsToggle.IsChecked = true;
             if (_isOpen) return;
 
             _previousForeground = NativeMethods.GetForegroundWindow();
@@ -304,6 +305,10 @@ namespace ScreenTranslator
                 IntervalValue.Text = $"{_config.CaptureIntervalMs} ms";
                 HotkeyCheck.IsChecked = _config.GameBarHotkeyEnabled;
                 MergeLinesCheck.IsChecked = _config.MergeLines;
+
+                var service = TranslationServiceInfo.Of(_config.ActiveService);
+                ServiceBox.SelectedItem = service;
+                UpdateServicePanel(service);
             }
             finally
             {
@@ -311,14 +316,40 @@ namespace ScreenTranslator
             }
         }
 
+        /// <summary>Shows the description, and the key box only for services that need the user's own key.</summary>
+        private void UpdateServicePanel(TranslationServiceInfo service)
+        {
+            ServiceDescription.Text = service.Description;
+            KeyPanel.Visibility = service.KeyUrl == null ? Visibility.Collapsed : Visibility.Visible;
+            GlossaryServiceNote.Visibility = service.Service == TranslationService.DeepL ? Visibility.Collapsed : Visibility.Visible;
+            if (service.KeyUrl == null) return;
+
+            KeyLabel.Text = service.Service == TranslationService.DeepL ? "Your DeepL API key" : "Your Google Cloud API key";
+            KeyLink.NavigateUri = new Uri(service.KeyUrl);
+            ApiKeyBox.Password = service.Service == TranslationService.DeepL ? _config.DeepLApiKey : _config.GoogleCloudApiKey;
+
+            var variable = AppConfig.KeyVariable(service.Service);
+            KeyStatus.Text = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable!))
+                ? $"The {variable} environment variable is set and overrides this key."
+                : "Stored only on this PC, never shared.";
+        }
+
         private void RefreshUsage()
         {
             var usage = _overlay.Usage;
-            if (usage == null)
+            UsageTitle.Text = _config.ActiveService == TranslationService.DeepL ? "DeepL usage this month" : "Translation service";
+            UsageBar.Visibility = _config.ActiveService == TranslationService.DeepL ? Visibility.Visible : Visibility.Collapsed;
+
+            if (_config.ActiveService != TranslationService.DeepL)
+            {
+                UsagePercent.Text = "";
+                UsageText.Text = TranslationServiceInfo.Of(_config.ActiveService).Name + ". Change it in Settings.";
+            }
+            else if (usage == null)
             {
                 UsageBar.Value = 0;
                 UsagePercent.Text = "";
-                UsageText.Text = _config.GetApiKey().Length == 0
+                UsageText.Text = _config.GetApiKey(TranslationService.DeepL).Length == 0
                     ? "Add your DeepL API key in Settings."
                     : "Checking usage…";
             }
@@ -422,12 +453,29 @@ namespace ScreenTranslator
 
         #region Settings widget
 
+        private void Service_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_syncing || ServiceBox.SelectedItem is not TranslationServiceInfo service) return;
+
+            _overlay.SetTranslationService(service.Service);
+            UpdateServicePanel(service);
+            RefreshUsage();
+        }
+
         private void SaveKey_Click(object sender, RoutedEventArgs e)
         {
-            _config.DeepLApiKey = ApiKeyBox.Password.Trim();
+            var service = _config.ActiveService;
+            _config.SetApiKey(service, ApiKeyBox.Password);
             _config.Save();
-            _overlay.RefreshApiKey();
-            KeyStatus.Text = _config.DeepLApiKey.Length == 0 ? "Key removed." : "Key saved.";
+            _overlay.RefreshTranslationService();
+            KeyStatus.Text = ApiKeyBox.Password.Trim().Length == 0 ? "Key removed." : "Key saved.";
+            RefreshUsage();
+        }
+
+        private void KeyLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+            e.Handled = true;
         }
 
         private void Interval_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)

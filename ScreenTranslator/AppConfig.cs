@@ -1,11 +1,19 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ScreenTranslator
 {
     public class AppConfig
     {
+        /// <summary>Null only in configs from before services existed; <see cref="Load"/> fills it in.</summary>
+        [JsonConverter(typeof(JsonStringEnumConverter<TranslationService>))]
+        public TranslationService? Service { get; set; }
+
+        // Each user's own keys; the app never ships one
         public string DeepLApiKey { get; set; } = "";
+        public string GoogleCloudApiKey { get; set; } = "";
+
         public string SourceLanguage { get; set; } = "ja";
         public string TargetLanguage { get; set; } = "EN-US";
         public double OverlayOpacity { get; set; } = 0.75;
@@ -23,11 +31,34 @@ namespace ScreenTranslator
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "ScreenTranslator", "config.json");
 
-        // DEEPL_API_KEY wins over the saved key, so dev machines never need it on disk
-        public string GetApiKey()
+        public TranslationService ActiveService => Service ?? TranslationService.GoogleFree;
+
+        /// <summary>Environment variable that overrides the saved key, so dev machines never need it on disk.</summary>
+        public static string? KeyVariable(TranslationService service) => service switch
         {
-            var fromEnv = Environment.GetEnvironmentVariable("DEEPL_API_KEY");
-            return string.IsNullOrWhiteSpace(fromEnv) ? DeepLApiKey.Trim() : fromEnv.Trim();
+            TranslationService.DeepL => "DEEPL_API_KEY",
+            TranslationService.GoogleCloud => "GOOGLE_TRANSLATE_API_KEY",
+            _ => null
+        };
+
+        public string GetApiKey(TranslationService service)
+        {
+            var variable = KeyVariable(service);
+            var fromEnv = variable == null ? null : Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(fromEnv)) return fromEnv.Trim();
+
+            return service switch
+            {
+                TranslationService.DeepL => DeepLApiKey.Trim(),
+                TranslationService.GoogleCloud => GoogleCloudApiKey.Trim(),
+                _ => ""
+            };
+        }
+
+        public void SetApiKey(TranslationService service, string key)
+        {
+            if (service == TranslationService.DeepL) DeepLApiKey = key.Trim();
+            else if (service == TranslationService.GoogleCloud) GoogleCloudApiKey = key.Trim();
         }
 
         public static AppConfig Load()
@@ -50,6 +81,11 @@ namespace ScreenTranslator
             config.CaptureIntervalMs = Math.Clamp(config.CaptureIntervalMs, 200, 2000);
             config.Glossary ??= new();
             config.GameBarWidgets ??= new();
+
+            // Older configs only knew DeepL: keep anyone who set a key on it, everyone else gets free Google
+            config.Service ??= string.IsNullOrWhiteSpace(config.GetApiKey(TranslationService.DeepL))
+                ? TranslationService.GoogleFree
+                : TranslationService.DeepL;
             return config;
         }
 

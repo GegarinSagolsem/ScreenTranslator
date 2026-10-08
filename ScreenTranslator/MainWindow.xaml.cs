@@ -54,7 +54,7 @@ namespace ScreenTranslator
             _statusTimer.Tick += (_, _) => { _statusTimer.Stop(); StatusPanel.Visibility = Visibility.Collapsed; };
             _peekTimer.Tick += PeekTimer_Tick;
 
-            _translator.SetApiKey(config.GetApiKey());
+            _translator.Configure(config.ActiveService, config.GetApiKey(config.ActiveService));
             _translator.SetGlossary(config.Glossary);
             ApplyLanguage(Languages.Find(config.SourceLanguage));
 
@@ -79,6 +79,7 @@ namespace ScreenTranslator
         public bool HasRegion => !_selectedRegion.IsEmpty;
         public double TextScale => _config.TextScale;
         public DeepLUsage? Usage => _translator.Usage;
+        public TranslationService Service => _translator.Service;
 
         public Task RefreshUsageAsync() => _translator.RefreshUsageAsync();
 
@@ -428,7 +429,7 @@ namespace ScreenTranslator
 
             _config.TargetLanguage = code;
             _config.Save();
-            _translator.SetLanguages(_ocr.CurrentLanguage.DeepLCode, code);
+            _translator.SetLanguages(_ocr.CurrentLanguage, code);
             ResetFrame();
             TranslatorStateChanged?.Invoke();
         }
@@ -460,13 +461,26 @@ namespace ScreenTranslator
                     $"Add {language.Name} in Settings › Time & language › Language & region, including its optical character recognition feature.");
             }
 
-            _translator.SetLanguages(language.DeepLCode, _config.TargetLanguage);
+            _translator.SetLanguages(language, _config.TargetLanguage);
             ResetFrame();
         }
 
-        public void RefreshApiKey()
+        public void SetTranslationService(TranslationService service)
         {
-            _translator.SetApiKey(_config.GetApiKey());
+            if (service == _config.ActiveService) return;
+
+            _config.Service = service;
+            _config.Save();
+            Log.Info($"Translation service: {service}");
+            RefreshTranslationService();
+            TranslatorStateChanged?.Invoke();
+        }
+
+        /// <summary>Re-applies the chosen service and its key, e.g. after the user saves a new key.</summary>
+        public void RefreshTranslationService()
+        {
+            var service = _config.ActiveService;
+            _translator.Configure(service, _config.GetApiKey(service));
             ResetFrame();
             _ = _translator.RefreshUsageAsync();
         }
