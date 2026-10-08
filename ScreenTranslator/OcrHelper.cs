@@ -62,6 +62,13 @@ namespace ScreenTranslator
             var language = CurrentLanguage;
             if (engine == null) return [];
 
+            if (verticalText)
+            {
+                // Manga pages: read each speech bubble on its own, away from the drawings around it
+                var bubbles = await RecognizeBubblesAsync(engine, bitmap, language);
+                if (bubbles.Count > 0) return bubbles;
+            }
+
             var lines = verticalText
                 ? await RecognizeColumnsAsync(engine, bitmap, language)
                 : await RecognizeLinesAsync(engine, bitmap, language);
@@ -145,6 +152,36 @@ namespace ScreenTranslator
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
             g.DrawImage(source, 0, 0, resized.Width, resized.Height);
             return resized;
+        }
+
+        /// <summary>One block per speech bubble, its columns joined in reading order.</summary>
+        private static async Task<List<OcrBlock>> RecognizeBubblesAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)
+        {
+            var blocks = new List<OcrBlock>();
+            foreach (var bubble in SpeechBubbles.Find(bitmap))
+            {
+                using (bubble)
+                {
+                    var columns = await RecognizeColumnsAsync(engine, bubble.Image, language);
+                    var text = string.Join(language.NoSpaces ? "" : " ", columns.Select(c => c.Text));
+                    if (!LooksLikeText(text)) continue; // a white area of the drawing, not a bubble
+
+                    var b = bubble.Bounds;
+                    var bounds = new System.Windows.Rect(b.X, b.Y, b.Width, b.Height);
+                    double charSize = columns.Select(c => c.LineHeight).Order().ElementAt(columns.Count / 2);
+                    blocks.Add(new OcrBlock(text, bounds, charSize, [bounds], Vertical: true));
+                }
+            }
+            return blocks;
+        }
+
+        /// <summary>At least two characters, mostly kana, kanji or hangul: OCR of drawings gives symbols and stray marks.</summary>
+        internal static bool LooksLikeText(string text)
+        {
+            int letters = text.Count(c => !char.IsWhiteSpace(c) && !char.IsPunctuation(c) && !char.IsSymbol(c));
+            int cjk = text.Count(c => c is (>= '\u3040' and <= '\u30FF') or (>= '\u3400' and <= '\u9FFF')
+                                       or (>= '\uAC00' and <= '\uD7AF') or (>= '\uF900' and <= '\uFAFF'));
+            return letters >= 2 && cjk >= letters * 0.6;
         }
 
         private static async Task<List<OcrBlock>> RecognizeColumnsAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)
