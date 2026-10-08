@@ -45,7 +45,7 @@ namespace ScreenTranslator
                 config = new AppConfig();
             }
 
-            config.OverlayOpacity = Math.Clamp(config.OverlayOpacity, 0.25, 1.0);
+            config.OverlayOpacity = Math.Clamp(config.OverlayOpacity, 0.0, 1.0);
             config.CaptureIntervalMs = Math.Clamp(config.CaptureIntervalMs, 200, 2000);
             config.Glossary ??= new();
             config.GameBarWidgets ??= new();

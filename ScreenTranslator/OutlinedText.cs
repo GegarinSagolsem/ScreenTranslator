@@ -1,0 +1,60 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Media;
+
+namespace ScreenTranslator
+{
+    /// <summary>
+    /// White text with a crisp black outline, like video subtitles, so it stays readable on any
+    /// background, including when the box behind it is faded or fully see-through.
+    /// </summary>
+    public sealed class OutlinedText : FrameworkElement
+    {
+        private static readonly Typeface Face = new(
+            new FontFamily("Segoe UI, Yu Gothic UI, Malgun Gothic, Microsoft YaHei UI"),
+            FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+
+        private double _fontSize = 14;
+        private FormattedText? _formatted;
+
+        public OutlinedText(string text) => Text = text;
+
+        public string Text { get; }
+
+        public double FontSize
+        {
+            get => _fontSize;
+            set
+            {
+                _fontSize = value;
+                InvalidateMeasure();
+                InvalidateVisual();
+            }
+        }
+
+        // Room around the glyphs for the half of the outline that sits outside them
+        private double Pad => OutlineThickness / 2;
+
+        private double OutlineThickness => Math.Max(2.5, _fontSize / 6);
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            _formatted = new FormattedText(Text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face,
+                _fontSize, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            if (!double.IsInfinity(availableSize.Width))
+                _formatted.MaxTextWidth = Math.Max(1, availableSize.Width - 2 * Pad);
+
+            return new Size(_formatted.WidthIncludingTrailingWhitespace + 2 * Pad, _formatted.Height + 2 * Pad);
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            if (_formatted == null) return;
+
+            var geometry = _formatted.BuildGeometry(new Point(Pad, Pad));
+            // Outline first, then the fill on top, so only the outside half of the outline shows
+            dc.DrawGeometry(null, new Pen(Brushes.Black, OutlineThickness) { LineJoin = PenLineJoin.Round }, geometry);
+            dc.DrawGeometry(Brushes.White, null, geometry);
+        }
+    }
+}

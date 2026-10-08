@@ -8,9 +8,14 @@ using Windows.Media.Ocr;
 namespace ScreenTranslator
 {
     /// <summary>One line, or several wrapped lines merged into one sentence block.</summary>
-    /// <param name="Bounds">Box in pixels of the captured bitmap.</param>
+    /// <param name="Bounds">Box in pixels of the captured bitmap, covering every line.</param>
     /// <param name="LineHeight">Height of a single line in pixels, used to size the overlay font.</param>
-    public record OcrBlock(string Text, System.Windows.Rect Bounds, double LineHeight);
+    /// <param name="Lines">Each line's box, top to bottom.</param>
+    public record OcrBlock(string Text, System.Windows.Rect Bounds, double LineHeight, IReadOnlyList<System.Windows.Rect> Lines)
+    {
+        /// <summary>The label starts here, not at the block's left edge, which can sit under a photo the text wraps around.</summary>
+        public System.Windows.Rect FirstLine => Lines[0];
+    }
 
     public class OcrHelper
     {
@@ -64,7 +69,7 @@ namespace ScreenTranslator
 
                 var text = JoinWords(line.Words.Select(w => w.Text), language.NoSpaces);
                 var bounds = new System.Windows.Rect(left / scale, top / scale, (right - left) / scale, (bottom - top) / scale);
-                lines.Add(new OcrBlock(text, bounds, bounds.Height));
+                lines.Add(new OcrBlock(text, bounds, bounds.Height, [bounds]));
             }
 
             return mergeLines ? MergeLines(lines, language.NoSpaces) : lines;
@@ -72,13 +77,14 @@ namespace ScreenTranslator
 
         /// <summary>
         /// Joins lines that wrap onto the next one, so DeepL sees whole sentences instead of fragments.
-        /// Line B continues line A when they share a font size, B sits right under A, they're
-        /// left-aligned or centred together, and A runs to the right edge of the text (it wrapped).
-        /// That last rule keeps menus and lists, whose items end short, as separate entries.
+        /// Line B continues line A when they share a font size, B sits right under A, they line up
+        /// (left, centred, or B wraps under a photo to the left), and A is long and runs to the right
+        /// edge of its column (it wrapped). That last rule keeps menus and lists, whose items end short,
+        /// as separate entries.
         /// </summary>
         public static IReadOnlyList<OcrBlock> MergeLines(IReadOnlyList<OcrBlock> lines, bool noSpaces)
         {
-            var blocks = new List<(StringBuilder Text, System.Windows.Rect Bounds, OcrBlock Last)>();
+            var blocks = new List<(StringBuilder Text, System.Windows.Rect Bounds, List<System.Windows.Rect> Lines, OcrBlock Last)>();
 
             foreach (var line in lines.OrderBy(l => l.Bounds.Top))
             {
@@ -91,20 +97,21 @@ namespace ScreenTranslator
 
                 if (target < 0)
                 {
-                    blocks.Add((new StringBuilder(line.Text), line.Bounds, line));
+                    blocks.Add((new StringBuilder(line.Text), line.Bounds, [line.Bounds], line));
                     continue;
                 }
 
-                var (text, bounds, _) = blocks[target];
+                var (text, bounds, members, _) = blocks[target];
                 if (!noSpaces || (text.Length > 0 && line.Text.Length > 0 && IsLatin(text[^1]) && IsLatin(line.Text[0])))
                     text.Append(' ');
                 text.Append(line.Text);
                 bounds.Union(line.Bounds);
-                blocks[target] = (text, bounds, line);
+                members.Add(line.Bounds);
+                blocks[target] = (text, bounds, members, line);
             }
 
             return blocks
-                .Select(b => new OcrBlock(b.Text.ToString(), b.Bounds, b.Last.LineHeight))
+                .Select(b => new OcrBlock(b.Text.ToString(), b.Bounds, b.Last.LineHeight, b.Lines))
                 .ToList();
         }
 
@@ -117,18 +124,23 @@ namespace ScreenTranslator
             double ratio = a.Height / Math.Max(b.Height, 1);
             if (ratio < 0.7 || ratio > 1.4) return false; // different font size
 
+            // Web pages use ~1.6 line spacing, which leaves a gap of up to ~0.8 of a line
             double gap = b.Top - a.Bottom;
-            if (gap < -0.3 * h || gap > 0.6 * h) return false; // not the very next line
+            if (gap < -0.3 * h || gap > 1.0 * h) return false; // not the very next line
 
             bool leftAligned = Math.Abs(b.Left - a.Left) < 1.5 * h;
             bool centred = Math.Abs((b.Left + b.Right) / 2 - (a.Left + a.Right) / 2) < 1.5 * h;
-            if (!leftAligned && !centred) return false;
+            bool wrapsUnderPhoto = b.Left < a.Left - 1.5 * h; // text flowing on underneath a floated image
+            if (!leftAligned && !centred && !wrapsUnderPhoto) return false;
 
-            // Right edge of the text this line belongs to: the widest line in the same font size
-            double textRight = all
-                .Where(l => l.Bounds.Height / Math.Max(a.Height, 1) is > 0.7 and < 1.4)
+            // A wrapped line is long and reaches the right edge of its column; list and menu items end short
+            if (a.Width < 6 * h) return false;
+            double columnRight = all
+                .Where(l => l.Bounds.Left < a.Right && l.Bounds.Right > a.Left              // same column
+                            && Math.Abs(l.Bounds.Top - a.Top) < 6 * h                     // nearby
+                            && l.Bounds.Height / Math.Max(a.Height, 1) is > 0.7 and < 1.4) // same font size
                 .Max(l => l.Bounds.Right);
-            return a.Right >= textRight - 2 * h;
+            return a.Right >= columnRight - 2 * h;
         }
 
         // Windows OCR puts a space between every CJK word box ("こ ん に ち は"), which

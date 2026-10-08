@@ -353,12 +353,7 @@ namespace ScreenTranslator
             if (version != _settingsVersion) return;
 
             // Swap all overlays at once so they don't flicker in line by line
-            TranslationCanvas.Children.Clear();
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                if (!string.IsNullOrWhiteSpace(translations[i]))
-                    DrawTranslation(translations[i]!, blocks[i], region, dpi);
-            }
+            TranslationLayout.Draw(TranslationCanvas, blocks, translations, region, dpi, _overlayBrush);
             _drawnSignature = signature;
         }
 
@@ -378,35 +373,6 @@ namespace ScreenTranslator
             _settingsVersion++;
             _frameGate.Reset();
             _drawnSignature = null;
-        }
-
-        private void DrawTranslation(string text, OcrBlock block, Rect region, DpiScale dpi)
-        {
-            double left = region.X + block.Bounds.X / dpi.DpiScaleX;
-            double top = region.Y + block.Bounds.Y / dpi.DpiScaleY;
-            double lineHeight = block.LineHeight / dpi.DpiScaleY;
-            double maxWidth = Math.Max(region.Right - left, 80);
-
-            var label = new Border
-            {
-                Background = _overlayBrush,
-                Padding = new Thickness(3, 1, 3, 1),
-                CornerRadius = new CornerRadius(2),
-                // At least as wide as the original block, so the translation covers it
-                MinWidth = Math.Min(block.Bounds.Width / dpi.DpiScaleX, maxWidth),
-                MaxWidth = maxWidth,
-                Child = new TextBlock
-                {
-                    Text = text,
-                    Foreground = Brushes.White,
-                    FontSize = Math.Clamp(lineHeight * 0.8, 12, 28),
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-
-            Canvas.SetLeft(label, left);
-            Canvas.SetTop(label, top);
-            TranslationCanvas.Children.Add(label);
         }
 
         #endregion
@@ -492,21 +458,25 @@ namespace ScreenTranslator
             _ = _translator.RefreshUsageAsync();
         }
 
+        /// <summary>100 → 75 → 50 → 25 → 0 % (text only) → 100 %.</summary>
         public void CycleOpacity()
         {
-            double opacity = _overlayBrush.Opacity - 0.25;
-            if (opacity < 0.25) opacity = 1.0;
+            double current = _overlayBrush.Opacity;
+            double opacity = current <= 0.001 ? 1.0 : Math.Max(0, current - 0.25);
 
             SetOpacity(opacity);
             _config.Save();
-            ShowStatus($"Overlay opacity {opacity:P0}");
+            ShowStatus($"Background opacity {opacity:P0}");
             TranslatorStateChanged?.Invoke();
         }
 
-        /// <summary>Applies immediately; the caller decides when to save, so slider drags don't hit the disk.</summary>
+        /// <summary>
+        /// Fades only the dark background behind the translations; the text itself stays solid.
+        /// Applies immediately; the caller decides when to save, so slider drags don't hit the disk.
+        /// </summary>
         public void SetOpacity(double opacity)
         {
-            // Every overlay shares this brush, so existing labels update too
+            // Every label shares this brush, so existing labels update too
             _overlayBrush.Opacity = opacity;
             _config.OverlayOpacity = opacity;
         }

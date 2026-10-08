@@ -15,7 +15,7 @@
                     <Separator/>
                     <MenuItem Header="Reselect region" InputGestureText="Ctrl+Shift+R" Click="TrayReselect_Click"/>
                     <MenuItem Header="Pause / resume" InputGestureText="Ctrl+Shift+P" Click="TrayPause_Click"/>
-                    <MenuItem Header="Cycle opacity" InputGestureText="Ctrl+Shift+O" Click="TrayOpacity_Click"/>
+                    <MenuItem Header="Cycle background opacity" InputGestureText="Ctrl+Shift+O" Click="TrayOpacity_Click"/>
                     <MenuItem Header="Source language" Tag="LanguageMenu"/>
                     <Separator/>
                     <MenuItem Header="Set DeepL API key…" Click="TrayApiKey_Click"/>

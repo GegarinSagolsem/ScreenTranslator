@@ -184,10 +184,14 @@
 
                         <DockPanel Margin="0,14,0,0">
                             <TextBlock x:Name="OpacityValue" DockPanel.Dock="Right" Foreground="{StaticResource SubtleTextBrush}"/>
-                            <TextBlock Text="Translation box opacity" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock Text="Background opacity" Foreground="{StaticResource SubtleTextBrush}"
+                                       ToolTip="Fades only the dark box behind each translation. The text stays solid, with an outline that keeps it readable even at 0 %."/>
                         </DockPanel>
-                        <Slider x:Name="OpacitySlider" Margin="0,4,0,0" Minimum="0.25" Maximum="1"
-                                SmallChange="0.05" LargeChange="0.25" ValueChanged="Opacity_Changed"/>
+                        <Slider x:Name="OpacitySlider" Margin="0,4,0,0" Minimum="0" Maximum="1"
+                                SmallChange="0.05" LargeChange="0.25" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                ValueChanged="Opacity_Changed"/>
+                        <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="{StaticResource SubtleTextBrush}"
+                                   Text="Text always stays fully visible."/>
 
                         <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,14"/>
 
@@ -327,7 +331,7 @@
                             <TextBlock Grid.Row="2" Text="Ctrl+Shift+P" FontWeight="SemiBold"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="Pause / resume" Foreground="{StaticResource SubtleTextBrush}"/>
                             <TextBlock Grid.Row="3" Text="Ctrl+Shift+O" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Cycle opacity" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Cycle background opacity" Foreground="{StaticResource SubtleTextBrush}"/>
                             <TextBlock Grid.Row="4" Text="Hold Ctrl+Shift+H" FontWeight="SemiBold"/>
                             <TextBlock Grid.Row="4" Grid.Column="1" Text="Peek at the original text" Foreground="{StaticResource SubtleTextBrush}"/>
                             <TextBlock Grid.Row="5" Text="Ctrl+Shift+1 – 3" FontWeight="SemiBold"/>
