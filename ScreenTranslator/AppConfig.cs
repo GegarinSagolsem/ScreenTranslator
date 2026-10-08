@@ -12,6 +12,7 @@ namespace ScreenTranslator
         public double OverlayOpacity { get; set; } = 0.75;
         public int CaptureIntervalMs { get; set; } = 500;
         public bool GameBarHotkeyEnabled { get; set; } = true;
+        public bool MergeLines { get; set; } = true;
         public List<GlossaryEntry> Glossary { get; set; } = new();
         public Dictionary<string, WidgetState> GameBarWidgets { get; set; } = new();
 

@@ -20,6 +20,8 @@ namespace ScreenTranslator
         private readonly TranslationHelper _translator = new();
         private readonly DispatcherTimer _captureTimer = new();
         private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(1.5) };
+        private readonly DispatcherTimer _peekTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
+        private readonly FrameGate _frameGate = new();
         private readonly Dictionary<int, Action> _hotkeys = new();
         private readonly SolidColorBrush _overlayBrush;
         private IntPtr _hwnd;
@@ -31,7 +33,7 @@ namespace ScreenTranslator
         private bool _isDragging;
         private bool _isPaused;
         private bool _isProcessing;
-        private byte[]? _lastFrameBytes;
+        private string? _drawnSignature; // text + positions on screen; null forces a redraw
 
         // Bumped whenever region/language/key changes so in-flight frames get discarded
         private int _settingsVersion;
@@ -48,6 +50,7 @@ namespace ScreenTranslator
             _captureTimer.Interval = TimeSpan.FromMilliseconds(config.CaptureIntervalMs);
             _captureTimer.Tick += CaptureTimer_Tick;
             _statusTimer.Tick += (_, _) => { _statusTimer.Stop(); StatusPanel.Visibility = Visibility.Collapsed; };
+            _peekTimer.Tick += PeekTimer_Tick;
 
             _translator.SetApiKey(config.GetApiKey());
             _translator.SetGlossary(config.Glossary);
@@ -110,6 +113,7 @@ namespace ScreenTranslator
             Register(1, 'R', BeginSelection);
             Register(2, 'P', TogglePause);
             Register(3, 'O', CycleOpacity);
+            Register(5, 'H', BeginPeek);
             if (_config.GameBarHotkeyEnabled)
                 Register(GameBarHotkeyId, 'G', OpenGameBar);
             for (int i = 0; i < Languages.All.Length; i++)
@@ -133,6 +137,23 @@ namespace ScreenTranslator
         }
 
         private void OpenGameBar() => GameBarRequested?.Invoke();
+
+        // RegisterHotKey only reports the key going down, so watch for H coming back up
+        private void BeginPeek()
+        {
+            if (_peekTimer.IsEnabled) return;
+
+            TranslationCanvas.Visibility = Visibility.Hidden;
+            _peekTimer.Start();
+        }
+
+        private void PeekTimer_Tick(object? sender, EventArgs e)
+        {
+            if ((NativeMethods.GetAsyncKeyState('H') & 0x8000) != 0) return; // still held
+
+            _peekTimer.Stop();
+            TranslationCanvas.Visibility = Visibility.Visible;
+        }
 
         /// <summary>Registers or frees Ctrl+Shift+G to match the setting, so it can be given back to other apps.</summary>
         public void UpdateGameBarHotkey()
@@ -307,8 +328,9 @@ namespace ScreenTranslator
             int height = (int)Math.Round(region.Height * dpi.DpiScaleY);
             if (width <= 0 || height <= 0) return;
 
-            var lines = await Task.Run(() => CaptureAndRecognizeAsync(x, y, width, height));
-            if (lines == null) return; // screen unchanged
+            bool mergeLines = _config.MergeLines;
+            var blocks = await Task.Run(() => CaptureAndRecognizeAsync(x, y, width, height, mergeLines));
+            if (blocks == null) return; // unchanged, or still typing out
 
             if (version != _settingsVersion)
             {
@@ -316,55 +338,63 @@ namespace ScreenTranslator
                 return;
             }
 
-            if (lines.Count == 0)
+            // Animated scenes get re-read every few seconds; skip the work if the text is the same
+            var signature = string.Join("\n", blocks.Select(b => $"{b.Text}@{(int)b.Bounds.X / 8},{(int)b.Bounds.Y / 8}"));
+            if (signature == _drawnSignature) return;
+
+            if (blocks.Count == 0)
             {
                 TranslationCanvas.Children.Clear(); // text is gone, so drop stale overlays
+                _drawnSignature = signature;
                 return;
             }
 
-            var translations = await _translator.TranslateAsync(lines.Select(l => l.Text).ToList());
+            var translations = await _translator.TranslateAsync(blocks.Select(b => b.Text).ToList());
             if (version != _settingsVersion) return;
 
             // Swap all overlays at once so they don't flicker in line by line
             TranslationCanvas.Children.Clear();
-            for (int i = 0; i < lines.Count; i++)
+            for (int i = 0; i < blocks.Count; i++)
             {
                 if (!string.IsNullOrWhiteSpace(translations[i]))
-                    DrawTranslation(translations[i]!, lines[i].Bounds, region, dpi);
+                    DrawTranslation(translations[i]!, blocks[i], region, dpi);
             }
+            _drawnSignature = signature;
         }
 
-        private async Task<IReadOnlyList<OcrLineResult>?> CaptureAndRecognizeAsync(int x, int y, int width, int height)
+        private async Task<IReadOnlyList<OcrBlock>?> CaptureAndRecognizeAsync(int x, int y, int width, int height, bool mergeLines)
         {
             using var bitmap = ScreenCapture.CaptureRegion(x, y, width, height);
             var pixels = ScreenCapture.BitmapToBytes(bitmap);
 
-            var last = _lastFrameBytes;
-            if (last != null && !ScreenCapture.HasChanged(last, pixels))
+            if (!_frameGate.ShouldProcess(pixels, DateTime.UtcNow))
                 return null;
 
-            _lastFrameBytes = pixels;
-            return await _ocr.RecognizeAsync(bitmap);
+            return await _ocr.RecognizeAsync(bitmap, mergeLines);
         }
 
         private void ResetFrame()
         {
             _settingsVersion++;
-            _lastFrameBytes = null;
+            _frameGate.Reset();
+            _drawnSignature = null;
         }
 
-        private void DrawTranslation(string text, Rect pixelBounds, Rect region, DpiScale dpi)
+        private void DrawTranslation(string text, OcrBlock block, Rect region, DpiScale dpi)
         {
-            double left = region.X + pixelBounds.X / dpi.DpiScaleX;
-            double top = region.Y + pixelBounds.Y / dpi.DpiScaleY;
-            double lineHeight = pixelBounds.Height / dpi.DpiScaleY;
+            double left = region.X + block.Bounds.X / dpi.DpiScaleX;
+            double top = region.Y + block.Bounds.Y / dpi.DpiScaleY;
+            double lineHeight = block.LineHeight / dpi.DpiScaleY;
+            double maxWidth = Math.Max(region.Right - left, 80);
 
             var label = new Border
             {
                 Background = _overlayBrush,
                 Padding = new Thickness(3, 1, 3, 1),
                 CornerRadius = new CornerRadius(2),
-                MaxWidth = Math.Max(region.Right - left, 80),
+                // At least as wide as the original block, so the translation covers it
+                MinWidth = Math.Min(block.Bounds.Width / dpi.DpiScaleX, maxWidth),
+                MaxWidth = maxWidth,
                 Child = new TextBlock
                 {
                     Text = text,
@@ -427,6 +457,13 @@ namespace ScreenTranslator
         public void ApplyGlossary()
         {
             _translator.SetGlossary(_config.Glossary);
+            ResetFrame();
+        }
+
+        public void SetMergeLines(bool merge)
+        {
+            _config.MergeLines = merge;
+            _config.Save();
             ResetFrame();
         }
 

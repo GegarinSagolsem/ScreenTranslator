@@ -297,7 +297,11 @@
                                 SmallChange="100" LargeChange="500" TickFrequency="100" IsSnapToTickEnabled="True"
                                 ValueChanged="Interval_Changed"/>
 
-                        <CheckBox x:Name="HotkeyCheck" Margin="0,12,0,0" Content="Open this bar with Ctrl+Shift+G"
+                        <CheckBox x:Name="MergeLinesCheck" Margin="0,12,0,0" Content="Join wrapped lines into sentences"
+                                  ToolTip="Translate a paragraph that wraps over several lines as one sentence. Turn off if menu items get joined together."
+                                  Checked="MergeLinesCheck_Changed" Unchecked="MergeLinesCheck_Changed"/>
+
+                        <CheckBox x:Name="HotkeyCheck" Margin="0,4,0,0" Content="Open this bar with Ctrl+Shift+G"
                                   Checked="HotkeyCheck_Changed" Unchecked="HotkeyCheck_Changed"/>
 
                         <Border Height="1" Background="{StaticResource DividerBrush}" Margin="0,14"/>
@@ -309,7 +313,7 @@
                                 <ColumnDefinition/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                             </Grid.RowDefinitions>
                             <Grid.Resources>
                                 <Style TargetType="TextBlock">
@@ -324,8 +328,10 @@
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="Pause / resume" Foreground="{StaticResource SubtleTextBrush}"/>
                             <TextBlock Grid.Row="3" Text="Ctrl+Shift+O" FontWeight="SemiBold"/>
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="Cycle opacity" Foreground="{StaticResource SubtleTextBrush}"/>
-                            <TextBlock Grid.Row="4" Text="Ctrl+Shift+1 – 3" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="Japanese / Chinese / Korean" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock Grid.Row="4" Text="Hold Ctrl+Shift+H" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="Peek at the original text" Foreground="{StaticResource SubtleTextBrush}"/>
+                            <TextBlock Grid.Row="5" Text="Ctrl+Shift+1 – 3" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="Japanese / Chinese / Korean" Foreground="{StaticResource SubtleTextBrush}"/>
                         </Grid>
                     </StackPanel>
                 </DockPanel>

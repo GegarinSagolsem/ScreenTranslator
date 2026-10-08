@@ -301,6 +301,7 @@ namespace ScreenTranslator
                 IntervalSlider.Value = _config.CaptureIntervalMs;
                 IntervalValue.Text = $"{_config.CaptureIntervalMs} ms";
                 HotkeyCheck.IsChecked = _config.GameBarHotkeyEnabled;
+                MergeLinesCheck.IsChecked = _config.MergeLines;
             }
             finally
             {
@@ -425,6 +426,11 @@ namespace ScreenTranslator
 
             _overlay.SetCaptureInterval((int)e.NewValue);
             IntervalValue.Text = $"{(int)e.NewValue} ms";
+        }
+
+        private void MergeLinesCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_syncing) _overlay.SetMergeLines(MergeLinesCheck.IsChecked == true);
         }
 
         private void HotkeyCheck_Changed(object sender, RoutedEventArgs e)

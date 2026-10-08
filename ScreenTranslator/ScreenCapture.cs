@@ -35,22 +35,94 @@ namespace ScreenTranslator
             }
         }
 
-        public static bool HasChanged(byte[] previous, byte[] current, double threshold = 0.01)
+        // A pixel only counts as changed when a colour channel moves by more than this,
+        // so video noise and dithering don't look like new text
+        private const int ChannelTolerance = 24;
+
+        /// <summary>
+        /// True when at least <paramref name="minChangedPixels"/> pixels really changed. Counting pixels rather
+        /// than a share of the region means a single new character still registers in a large text box.
+        /// </summary>
+        public static bool HasChanged(byte[] previous, byte[] current, int minChangedPixels = 12)
         {
             if (previous.Length != current.Length) return true;
 
             // Fast vectorised path for the common case: nothing on screen moved
             if (previous.AsSpan().SequenceEqual(current)) return false;
 
-            int allowed = (int)(previous.Length * threshold);
-            int diffCount = 0;
-            for (int i = 0; i < previous.Length; i++)
+            int changed = 0;
+            for (int i = 0; i + 2 < previous.Length; i += 4) // BGRA; alpha is always opaque
             {
-                if (previous[i] != current[i] && ++diffCount > allowed)
-                    return true;
+                if (Math.Abs(previous[i] - current[i]) > ChannelTolerance ||
+                    Math.Abs(previous[i + 1] - current[i + 1]) > ChannelTolerance ||
+                    Math.Abs(previous[i + 2] - current[i + 2]) > ChannelTolerance)
+                {
+                    if (++changed >= minChangedPixels)
+                        return true;
+                }
             }
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Decides which captured frames are worth reading. Text that types out letter by letter changes
+    /// on every tick, so a changed frame is only read once it stops changing. A frame that repeats
+    /// one from two ticks ago also counts as settled: that's a blinking "▼ next" arrow, not typing,
+    /// which never goes back to an earlier frame. Scenes that never stop animating are still read
+    /// every <see cref="MaxSettleWait"/>.
+    /// </summary>
+    public sealed class FrameGate
+    {
+        public static readonly TimeSpan MaxSettleWait = TimeSpan.FromSeconds(3);
+
+        private byte[]? _processed;       // last frame that was read
+        private byte[]? _pending;         // newest changed frame waiting to settle
+        private byte[]? _pendingPrevious; // the one before it, to spot blinking
+        private DateTime _changeStartedAt;
+
+        /// <summary>Forget everything, so the next frame is read straight away.</summary>
+        public void Reset()
+        {
+            _processed = null;
+            _pending = null;
+            _pendingPrevious = null;
+        }
+
+        public bool ShouldProcess(byte[] frame, DateTime now)
+        {
+            if (_processed == null)
+                return Accept(frame); // new region or settings: read immediately
+
+            if (!ScreenCapture.HasChanged(_processed, frame))
+            {
+                _pending = _pendingPrevious = null; // back to what is already translated
+                return false;
+            }
+
+            if (_pending == null)
+            {
+                _pending = frame;
+                _changeStartedAt = now;
+                return false;
+            }
+
+            bool settled = !ScreenCapture.HasChanged(_pending, frame) ||
+                           (_pendingPrevious != null && !ScreenCapture.HasChanged(_pendingPrevious, frame));
+            if (settled || now - _changeStartedAt >= MaxSettleWait)
+                return Accept(frame);
+
+            _pendingPrevious = _pending;
+            _pending = frame;
+            return false;
+        }
+
+        private bool Accept(byte[] frame)
+        {
+            _processed = frame;
+            _pending = _pendingPrevious = null;
+            return true;
         }
     }
 }
