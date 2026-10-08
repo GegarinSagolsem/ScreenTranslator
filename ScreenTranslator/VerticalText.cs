@@ -12,6 +12,7 @@ namespace ScreenTranslator
     {
         private const int InkContrast = 64;       // luminance difference from the background that counts as ink
         private const double FuriganaWidth = 0.6;  // columns narrower than this share of the typical one are ruby text
+        private const double ValleyDepth = 0.25;   // ink this far below both sides' peaks separates two bands
 
         /// <param name="Sources">The column(s) in the captured bitmap that make up this line, in reading order.</param>
         /// <param name="CellCounts">Characters (cells) per source column, to split the recognised text back up.</param>
@@ -71,9 +72,20 @@ namespace ScreenTranslator
                     {
                         foreach (var cell in cellsPerColumn[i])
                         {
-                            int y = rowTop + (rowHeight - cell.Height) / 2;
-                            int cellX = x + (charSize - cell.Width) / 2;
-                            g.DrawImage(source, new Rectangle(cellX, y, cell.Width, cell.Height), cell, GraphicsUnit.Pixel);
+                            if (IsTurned(ink, width, cell))
+                            {
+                                // Vertical text turns ー, … and 「」 by 90°; OCR reads them laid back down
+                                using var turned = source.Clone(cell, source.PixelFormat);
+                                turned.RotateFlip(RotateFlipType.Rotate270FlipNone);
+                                g.DrawImage(turned, new Rectangle(x + (charSize - turned.Width) / 2,
+                                    rowTop + (rowHeight - turned.Height) / 2, turned.Width, turned.Height));
+                            }
+                            else
+                            {
+                                int y = rowTop + (rowHeight - cell.Height) / 2;
+                                int cellX = x + (charSize - cell.Width) / 2;
+                                g.DrawImage(source, new Rectangle(cellX, y, cell.Width, cell.Height), cell, GraphicsUnit.Pixel);
+                            }
                             x += charSize + gap;
                         }
                     }
@@ -84,6 +96,29 @@ namespace ScreenTranslator
             }
 
             return new Rearranged(image, rows);
+        }
+
+        /// <summary>
+        /// A long-vowel bar (｜ for ー), a vertical ellipsis (︙) or a turned bracket (﹁): ink much narrower
+        /// than the column, at least half a character tall, and not an exclamation mark (a bar over a dot).
+        /// </summary>
+        private static bool IsTurned(bool[] ink, int width, Rectangle cell)
+        {
+            int left = cell.Right, right = cell.Left - 1;
+            var inkPerY = new int[cell.Height];
+            for (int y = 0; y < cell.Height; y++)
+                for (int x = cell.Left; x < cell.Right; x++)
+                {
+                    if (!ink[(cell.Top + y) * width + x]) continue;
+                    inkPerY[y]++;
+                    left = Math.Min(left, x);
+                    right = Math.Max(right, x);
+                }
+
+            if (right < left || right - left + 1 > cell.Width * 0.4 || cell.Height < cell.Width * 0.5) return false;
+            var strokes = Runs(inkPerY, 1);
+            bool exclamation = strokes.Count == 2 && strokes[0].Length >= cell.Width * 0.4 && strokes[1].Length <= cell.Width * 0.25;
+            return !exclamation;
         }
 
         /// <summary>Marks pixels that differ clearly from the most common (background) brightness.</summary>
@@ -119,7 +154,9 @@ namespace ScreenTranslator
         /// <summary>
         /// Columns are vertical bands of ink. Long horizontal lines (speech-bubble outlines, underlines)
         /// would join every column into one band, and vertical text never has a horizontal stroke wider
-        /// than a character or two, so those lines are erased first.
+        /// than a character or two, so those lines are erased first. Ruby (furigana) runs in a thin band
+        /// beside its column and often touches it or the next one, as in tightly set manga, so bands are
+        /// also split where their ink drops into a clear valley, and the thin bands are left out.
         /// </summary>
         private static List<Rectangle> FindColumns(bool[] ink, int width, int height)
         {
@@ -131,22 +168,27 @@ namespace ScreenTranslator
                 for (int x = 0; x < width; x++)
                     if (ink[y * width + x]) inkPerX[x]++;
 
-            var runs = Runs(inkPerX, minInk);
-            if (runs.Count == 0) return [];
+            var pieces = new List<(int Start, int Length)>();
+            foreach (var (start, length) in Runs(inkPerX, minInk))
+                SplitAtValleys(inkPerX, start, start + length, pieces);
+            if (pieces.Count == 0) return [];
 
-            // Join runs split by a gap inside one character (e.g. 川), which is narrow next to the column
-            int typicalWidth = Median(runs.Select(r => r.Length));
-            var joined = new List<(int Start, int Length)> { runs[0] };
-            foreach (var run in runs.Skip(1))
+            // Join pieces of one character split by a gap (川, い): both narrow, close together, and
+            // together no wider than a column. A column and its ruby are never both narrow.
+            int typicalWidth = TypicalWidth(inkPerX, pieces);
+            var joined = new List<(int Start, int Length)> { pieces[0] };
+            foreach (var piece in pieces.Skip(1))
             {
                 var last = joined[^1];
-                if (run.Start - (last.Start + last.Length) < typicalWidth / 4)
-                    joined[^1] = (last.Start, run.Start + run.Length - last.Start);
+                bool narrow = last.Length < typicalWidth * 0.8 && piece.Length < typicalWidth * 0.8;
+                bool close = piece.Start - (last.Start + last.Length) <= typicalWidth / 4;
+                if (narrow && close && piece.Start + piece.Length - last.Start <= typicalWidth * 1.25)
+                    joined[^1] = (last.Start, piece.Start + piece.Length - last.Start);
                 else
-                    joined.Add(run);
+                    joined.Add(piece);
             }
 
-            int columnWidth = Median(joined.Select(r => r.Length));
+            int columnWidth = TypicalWidth(inkPerX, joined);
             var columns = new List<Rectangle>();
             foreach (var (start, length) in joined)
             {
@@ -169,6 +211,70 @@ namespace ScreenTranslator
             }
 
             return columns.OrderByDescending(c => c.Right).ToList(); // read right to left
+        }
+
+        /// <summary>
+        /// Small text can leave no blank row between two characters. Ink too tall to be one character is
+        /// cut at its thinnest row about a character down, until what's left fits.
+        /// </summary>
+        private static void CutTouchingCharacters(int[] inkPerY, int start, int end, int charSize, List<(int Start, int Length)> pieces)
+        {
+            while (end - start > charSize * 1.8)
+            {
+                int cut = start + (int)(charSize * 0.7);
+                for (int y = cut + 1; y <= start + charSize * 1.3; y++)
+                    if (inkPerY[y] < inkPerY[cut]) cut = y;
+                pieces.Add((start, cut - start));
+                start = cut;
+            }
+            pieces.Add((start, end - start));
+        }
+
+        /// <summary>
+        /// Splits the band [start, end) where its ink drops well below the peaks on both sides, deepest
+        /// valley first, and trims each piece's faint edges (a stray mark of the neighbouring band).
+        /// </summary>
+        private static void SplitAtValleys(int[] inkPerX, int start, int end, List<(int Start, int Length)> pieces)
+        {
+            var peakLeft = new int[end - start];
+            var peakRight = new int[end - start];
+            for (int x = start, max = 0; x < end; x++) peakLeft[x - start] = max = Math.Max(max, inkPerX[x]);
+            for (int x = end - 1, max = 0; x >= start; x--) peakRight[x - start] = max = Math.Max(max, inkPerX[x]);
+
+            int valley = -1;
+            for (int x = start + 1; x < end - 1; x++)
+            {
+                bool clear = inkPerX[x] <= ValleyDepth * Math.Min(peakLeft[x - start - 1], peakRight[x - start + 1]);
+                if (clear && (valley < 0 || inkPerX[x] < inkPerX[valley])) valley = x;
+            }
+
+            if (valley >= 0)
+            {
+                SplitAtValleys(inkPerX, start, valley, pieces);
+                SplitAtValleys(inkPerX, valley + 1, end, pieces);
+                return;
+            }
+
+            int peak = peakLeft[^1];
+            while (start < end && inkPerX[start] < peak * 0.1) start++;
+            while (end > start && inkPerX[end - 1] < peak * 0.1) end--;
+            if (end > start) pieces.Add((start, end - start));
+        }
+
+        /// <summary>The usual column width, weighted by ink so that thin ruby bands and specks don't drag it down.</summary>
+        private static int TypicalWidth(int[] inkPerX, List<(int Start, int Length)> bands)
+        {
+            var byWidth = bands
+                .Select(b => (b.Length, Ink: Enumerable.Range(b.Start, b.Length).Sum(x => inkPerX[x])))
+                .OrderBy(b => b.Length)
+                .ToList();
+            long total = byWidth.Sum(b => (long)b.Ink), seen = 0;
+            foreach (var (length, inkCount) in byWidth)
+            {
+                seen += inkCount;
+                if (seen * 2 >= total) return length;
+            }
+            return byWidth[^1].Length;
         }
 
         private static void EraseLongHorizontalLines(bool[] ink, int width, int height, int maxLength)
@@ -198,10 +304,14 @@ namespace ScreenTranslator
                 for (int x = column.Left; x < column.Right; x++)
                     if (ink[(column.Top + y) * width + x]) inkPerY[y]++;
 
+            var pieces = new List<(int Start, int Length)>();
+            foreach (var (start, length) in Runs(inkPerY, 1))
+                CutTouchingCharacters(inkPerY, start, start + length, column.Width, pieces);
+
             var cells = new List<Rectangle>();
             int maxCell = (int)(column.Width * 1.15);
             (int Start, int End)? cell = null;
-            foreach (var (start, length) in Runs(inkPerY, 1))
+            foreach (var (start, length) in pieces)
             {
                 int end = start + length;
                 if (cell is { } c && end - c.Start <= maxCell)
@@ -234,12 +344,6 @@ namespace ScreenTranslator
                 }
             }
             return runs;
-        }
-
-        private static int Median(IEnumerable<int> values)
-        {
-            var sorted = values.Order().ToList();
-            return sorted.Count == 0 ? 0 : sorted[sorted.Count / 2];
         }
     }
 }

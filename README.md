@@ -162,7 +162,8 @@ better. Columns are read right to left and joined into paragraphs.
 
 On a **manga page**, ScreenTranslator first looks for speech bubbles and narration boxes (enclosed white
 areas that hold text) and translates each one separately, so the drawings, screentone and panel borders
-around them are left alone. Pages without bubbles, like novels, are read as columns.
+around them are left alone. Furigana (the small readings beside kanji) is left out of the translation,
+and each label fills its own bubble. Pages without bubbles, like novels, are read as columns.
 
 ![A manga page, original and translated bubble by bubble](docs/images/manga.png)
 

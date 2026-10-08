@@ -11,8 +11,9 @@ namespace ScreenTranslator
     /// <param name="LineHeight">Height of a single line in pixels, used to size the overlay font.</param>
     /// <param name="Lines">Each line's box, in reading order.</param>
     /// <param name="Vertical">Text runs in columns (top to bottom, right to left); LineHeight is then the column width.</param>
+    /// <param name="Bubble">The speech bubble the text sits in, which its label may fill.</param>
     public record OcrBlock(string Text, System.Windows.Rect Bounds, double LineHeight, IReadOnlyList<System.Windows.Rect> Lines,
-                           bool Vertical = false)
+                           bool Vertical = false, System.Windows.Rect? Bubble = null)
     {
         /// <summary>The label starts here, not at the block's left edge, which can sit under a photo the text wraps around.</summary>
         public System.Windows.Rect FirstLine => Lines[0];
@@ -154,7 +155,7 @@ namespace ScreenTranslator
             return resized;
         }
 
-        /// <summary>One block per speech bubble, its columns joined in reading order.</summary>
+        /// <summary>One block per speech bubble, its lines (columns) joined in reading order.</summary>
         private static async Task<List<OcrBlock>> RecognizeBubblesAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)
         {
             var blocks = new List<OcrBlock>();
@@ -162,26 +163,94 @@ namespace ScreenTranslator
             {
                 using (bubble)
                 {
-                    var columns = await RecognizeColumnsAsync(engine, bubble.Image, language);
-                    var text = string.Join(language.NoSpaces ? "" : " ", columns.Select(c => c.Text));
-                    if (!LooksLikeText(text)) continue; // a white area of the drawing, not a bubble
+                    // Windows OCR reads most bubbles of vertical Japanese (and horizontal signs) better by itself
+                    // than column by column, but now and then misses or garbles one that the columns get right
+                    var lines = await RecognizeColumnsAsync(engine, bubble.Image, language);
+                    if (language.ReadsVertical)
+                    {
+                        var native = DropRuby(await RecognizeLinesAsync(engine, bubble.Image, language));
+                        int columnsLead = Plausibility(lines.Select(l => l.Text)) - Plausibility(native.Select(l => l.Text));
+                        if (native.Count > 0 && columnsLead < 2) lines = native; // the columns must read clearly cleaner
+                    }
+                    var text = string.Join(language.NoSpaces ? "" : " ", lines.Select(l => l.Text));
+                    if (lines.Count == 0 || !LooksLikeText(text)) continue; // a white area of the drawing, not a bubble
+                    if (language.ReadsVertical) text = TidyEllipses(text);
 
+                    // The label covers everything written in the bubble, including any part OCR missed
                     var b = bubble.Bounds;
-                    var bounds = new System.Windows.Rect(b.X, b.Y, b.Width, b.Height);
-                    double charSize = columns.Select(c => c.LineHeight).Order().ElementAt(columns.Count / 2);
-                    blocks.Add(new OcrBlock(text, bounds, charSize, [bounds], Vertical: true));
+                    var members = lines.Select(l => System.Windows.Rect.Offset(l.Bounds, b.X, b.Y)).ToList();
+                    var bounds = members.Aggregate(System.Windows.Rect.Union);
+                    if (!bubble.Ink.IsEmpty)
+                        bounds.Union(new System.Windows.Rect(bubble.Ink.X, bubble.Ink.Y, bubble.Ink.Width, bubble.Ink.Height));
+                    double charSize = lines.Select(l => l.LineHeight).Order().ElementAt(lines.Count / 2);
+                    bool vertical = lines.Count(l => l.Vertical) * 2 >= lines.Count;
+                    blocks.Add(new OcrBlock(text, bounds, charSize, members, vertical,
+                        Bubble: new System.Windows.Rect(b.X, b.Y, b.Width, b.Height)));
                 }
             }
             return blocks;
         }
 
+        /// <summary>
+        /// Ruby (furigana, the small readings beside kanji) comes back as lines of its own, clearly thinner
+        /// than the text's. Their character size is compared with the usual one, weighted by line length so
+        /// that ruby, short and thin, doesn't drag it down.
+        /// </summary>
+        private static List<OcrBlock> DropRuby(List<OcrBlock> lines)
+        {
+            if (lines.Count < 2) return lines;
+
+            static double CharSize(OcrBlock l) => Math.Min(l.Bounds.Width, l.Bounds.Height);
+            static double Length(OcrBlock l) => Math.Max(l.Bounds.Width, l.Bounds.Height);
+
+            var bySize = lines.OrderBy(CharSize).ToList();
+            double total = lines.Sum(Length), seen = 0, usual = CharSize(bySize[^1]);
+            foreach (var line in bySize)
+            {
+                seen += Length(line);
+                if (seen * 2 >= total) { usual = CharSize(line); break; }
+            }
+            return lines.Where(l => CharSize(l) >= usual * 0.65).ToList();
+        }
+
+        /// <summary>A vertical "…" (︙) is read as ":" or "・:"; turn it back, so it isn't translated as a colon.</summary>
+        internal static string TidyEllipses(string text) =>
+            System.Text.RegularExpressions.Regex.Replace(text, "[・.]*[:：︰][・.:：︰]*|・{3,}", "…");
+
         /// <summary>At least two characters, mostly kana, kanji or hangul: OCR of drawings gives symbols and stray marks.</summary>
         internal static bool LooksLikeText(string text)
         {
             int letters = text.Count(c => !char.IsWhiteSpace(c) && !char.IsPunctuation(c) && !char.IsSymbol(c));
-            int cjk = text.Count(c => c is (>= '\u3040' and <= '\u30FF') or (>= '\u3400' and <= '\u9FFF')
-                                       or (>= '\uAC00' and <= '\uD7AF') or (>= '\uF900' and <= '\uFAFF'));
-            return letters >= 2 && cjk >= letters * 0.6;
+            return letters >= 2 && text.Count(IsCjkLetter) >= letters * 0.6;
+        }
+
+        // Kana (and 々〆〇), CJK ideographs and hangul
+        private static bool IsCjkLetter(char c) => c is (>= '\u3005' and <= '\u3007') or (>= '\u3040' and <= '\u30FF')
+                                                     or (>= '\u3400' and <= '\u9FFF') or (>= '\uAC00' and <= '\uD7AF')
+                                                     or (>= '\uF900' and <= '\uFAFF');
+
+        // Punctuation that's at home in Japanese and Chinese dialogue; ″ is how OCR reads a vertical "!!"
+        private const string CommonMarks = "、。，．！？!?…‥・〜～（）()♡♪″ 　";
+
+        /// <summary>
+        /// How much a reading looks like real text: its letters, less what OCR produces when it misreads
+        /// (stray symbols, a line opening with punctuation or a long-vowel mark, a bracket left unpaired).
+        /// </summary>
+        internal static int Plausibility(IEnumerable<string> lines)
+        {
+            int score = 0, open = 0, close = 0;
+            foreach (var line in lines.Select(TidyEllipses))
+            {
+                if (line.Length > 0 && "ー。、」』・".Contains(line[0])) score -= 2;
+                foreach (char c in line)
+                {
+                    if (c is '「' or '『') open++;
+                    else if (c is '」' or '』') close++;
+                    else if (IsCjkLetter(c)) score++;
+                    else if (!CommonMarks.Contains(c)) score -= 2;
+                }
+            }
+            return score - Math.Abs(open - close);
         }
 
         private static async Task<List<OcrBlock>> RecognizeColumnsAsync(OcrEngine engine, Bitmap bitmap, SourceLanguage language)

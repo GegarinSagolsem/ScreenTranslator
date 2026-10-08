@@ -4,7 +4,9 @@ namespace ScreenTranslator
     /// <param name="DeepLCode">DeepL source_lang code; pinning it stops short lines being misdetected.</param>
     /// <param name="GoogleCode">Google Translate source code.</param>
     /// <param name="NoSpaces">Script is written without spaces, so OCR word boxes are joined directly.</param>
-    public record SourceLanguage(string OcrTag, string DeepLCode, string GoogleCode, string Name, bool NoSpaces);
+    /// <param name="ReadsVertical">Windows OCR reads this language's vertical text by itself.</param>
+    public record SourceLanguage(string OcrTag, string DeepLCode, string GoogleCode, string Name, bool NoSpaces,
+                                 bool ReadsVertical = false);
 
     /// <param name="Code">DeepL target_lang code.</param>
     public record TargetLanguage(string Code, string Name);
@@ -14,7 +16,7 @@ namespace ScreenTranslator
         // Order matters: index i is bound to Ctrl+Shift+(i+1)
         public static readonly SourceLanguage[] All =
         [
-            new("ja", "JA", "ja", "Japanese", NoSpaces: true),
+            new("ja", "JA", "ja", "Japanese", NoSpaces: true, ReadsVertical: true),
             new("zh-Hans", "ZH", "zh-CN", "Chinese (Simplified)", NoSpaces: true),
             new("ko", "KO", "ko", "Korean", NoSpaces: false),
             new("zh-Hant", "ZH", "zh-TW", "Chinese (Traditional)", NoSpaces: true),

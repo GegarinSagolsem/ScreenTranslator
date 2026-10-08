@@ -12,6 +12,7 @@ internal static class MangaPage
         ("どこへ行くの？島の奥だよ。", new Rectangle(560, 90, 230, 260)),
         ("お腹が空いたなあ…", new Rectangle(90, 700, 200, 250)),
         ("その夜、嵐が来た。", new Rectangle(640, 690, 150, 230)),
+        ("私達の自己紹介しなくちゃ", new Rectangle(75, 1000, 180, 140)),
     ];
 
     public static Bitmap Draw(out List<(string Text, Rectangle Bubble)> bubbles)
@@ -46,6 +47,10 @@ internal static class MangaPage
         bubbles.Add((Expected[1].Text, new Rectangle(70, 680, 240, 290)));
         DrawBubble(g, new Rectangle(630, 680, 170, 250), ["その夜、", "嵐が来た。"], ellipse: false); // narration box
         bubbles.Add((Expected[2].Text, new Rectangle(630, 680, 170, 250)));
+        // Small text set tight, with ruby (furigana) beside the kanji, as on a real page
+        DrawBubble(g, new Rectangle(60, 985, 210, 170), ["私達の", "自己紹介", "しなくちゃ"], ellipse: true, size: 12,
+                   spacing: 1.5, style: FontStyle.Bold, ruby: [("わたしたち", 0, 0, 2), ("じこしょうかい", 1, 0, 4)]);
+        bubbles.Add((Expected[3].Text, new Rectangle(60, 985, 210, 170)));
 
         // A big sound effect drawn over the art (not in a bubble)
         using var sfx = new Font("Yu Gothic UI", 64, FontStyle.Bold, GraphicsUnit.Pixel);
@@ -54,15 +59,18 @@ internal static class MangaPage
     }
 
     /// <summary>Columns right to left: columns[0] is the right-most column.</summary>
-    static void DrawBubble(Graphics g, Rectangle r, string[] columns, bool ellipse)
+    /// <param name="spacing">Distance between columns, in characters.</param>
+    /// <param name="ruby">Readings drawn small, right of the characters [Row, Row + Length) of a column.</param>
+    static void DrawBubble(Graphics g, Rectangle r, string[] columns, bool ellipse, int size = 26, double spacing = 1.7,
+                           FontStyle style = FontStyle.Regular, (string Text, int Column, int Row, int Length)[]? ruby = null)
     {
         using var fill = new SolidBrush(Color.White);
         using var outline = new Pen(Color.Black, 3);
         if (ellipse) { g.FillEllipse(fill, r); g.DrawEllipse(outline, r); }
         else { g.FillRectangle(fill, r); g.DrawRectangle(outline, r); }
 
-        using var f = new Font("Yu Gothic UI", 26, GraphicsUnit.Pixel);
-        int pitchX = 44, pitchY = 30;
+        using var f = new Font("Yu Gothic UI", size, style, GraphicsUnit.Pixel);
+        int cell = size + 2, pitchX = (int)Math.Round(size * spacing), pitchY = (int)Math.Round(size * 1.15);
         int totalWidth = columns.Length * pitchX;
         int startX = r.Left + r.Width / 2 + totalWidth / 2 - pitchX;
         int maxLen = columns.Max(c => c.Length);
@@ -72,7 +80,15 @@ internal static class MangaPage
             {
                 var ch = columns[c][i].ToString();
                 var w = g.MeasureString(ch, f).Width;
-                g.DrawString(ch, f, Brushes.Black, startX - c * pitchX + (28 - w) / 2, startY + i * pitchY);
+                g.DrawString(ch, f, Brushes.Black, startX - c * pitchX + (cell - w) / 2, startY + i * pitchY);
             }
+
+        using var small = new Font("Yu Gothic UI", size / 2, GraphicsUnit.Pixel);
+        foreach (var (text, column, row, length) in ruby ?? [])
+        {
+            float step = Math.Min(size / 2 + 1, (float)length * pitchY / text.Length);
+            for (int i = 0; i < text.Length; i++)
+                g.DrawString(text[i].ToString(), small, Brushes.Black, startX - column * pitchX + cell - 1, startY + row * pitchY + i * step);
+        }
     }
 }

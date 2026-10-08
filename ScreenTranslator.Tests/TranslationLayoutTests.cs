@@ -87,6 +87,42 @@ public sealed class TranslationLayoutTests
         Assert.IsEmpty(canvas.Children);
     }
 
+    private static OcrBlock InBubble(Rect text, Rect bubble) => new("吹き出し", text, 12, [text], Vertical: true, Bubble: bubble);
+
+    [STATestMethod]
+    public void BubbleLabelsStayInsideTheirBubblesAndCoverTheText()
+    {
+        var blocks = new[]
+        {
+            InBubble(new Rect(130, 40, 40, 90), new Rect(110, 20, 90, 130)),
+            InBubble(new Rect(230, 40, 40, 90), new Rect(210, 20, 90, 130)), // the bubble right beside it
+        };
+        var canvas = new Canvas();
+
+        TranslationLayout.Draw(canvas, blocks, ["Why are the brothers tying Sanji up?", "Sanji was taken away"], Region, Dpi, Brushes.Black);
+
+        var labels = Labels(canvas);
+        AssertNoOverlaps(labels);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            var label = Bounds(labels[i]);
+            Assert.IsTrue(blocks[i].Bubble!.Value.Contains(label), $"label {label} leaves its bubble {blocks[i].Bubble}");
+            Assert.IsTrue(label.Contains(blocks[i].Bounds), $"label {label} doesn't cover the text {blocks[i].Bounds}");
+        }
+    }
+
+    [STATestMethod]
+    public void ALongWordWidensASmallBubblesLabelInsteadOfBreaking()
+    {
+        var canvas = new Canvas();
+
+        TranslationLayout.Draw(canvas, [InBubble(new Rect(510, 40, 14, 50), new Rect(500, 30, 34, 70))], ["quadruplets"],
+            Region, Dpi, Brushes.Black);
+
+        var text = (OutlinedText)Labels(canvas).Single().Child;
+        Assert.IsLessThan(text.FontSize * 2, text.DesiredSize.Height, "the word was broken over two lines");
+    }
+
     [STATestMethod]
     public void VerticalColumnsGetALabelWideEnoughForEnglish()
     {

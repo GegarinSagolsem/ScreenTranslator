@@ -10,7 +10,7 @@ namespace ScreenTranslator
     internal static class SpeechBubbles
     {
         private const int WorkingSize = 1000;     // analyse a downscaled copy; plenty for finding shapes
-        private const double MinArea = 0.0025;    // share of the page
+        private const double MinArea = 0.001;     // share of the page: a "!?" bubble on a two-page spread
         private const double MaxArea = 0.25;
         private const double MinFill = 0.45;      // white pixels / bounding box: bubbles are solid, backgrounds aren't
         private const double MaxAspect = 5;
@@ -19,10 +19,12 @@ namespace ScreenTranslator
 
         /// <param name="Bounds">The bubble's interior in the source image.</param>
         /// <param name="Image">The interior with everything outside the bubble's shape painted white.</param>
-        public sealed class Bubble(Rectangle bounds, Bitmap image) : IDisposable
+        /// <param name="Ink">What's written inside the bubble (text, ruby, marks) in the source image; empty if nothing.</param>
+        public sealed class Bubble(Rectangle bounds, Bitmap image, Rectangle ink) : IDisposable
         {
             public Rectangle Bounds { get; } = bounds;
             public Bitmap Image { get; } = image;
+            public Rectangle Ink { get; } = ink;
             public void Dispose() => Image.Dispose();
         }
 
@@ -55,7 +57,8 @@ namespace ScreenTranslator
                 bounds.Intersect(new Rectangle(0, 0, page.Width, page.Height));
                 if (bounds.Width < 8 || bounds.Height < 8) continue;
 
-                bubbles.Add(new Bubble(bounds, MaskedCrop(page, bounds, inside, region.Box, scale)));
+                var (image, ink) = MaskedCrop(page, bounds, inside, region.Box, scale);
+                bubbles.Add(new Bubble(bounds, image, ink));
             }
             return bubbles;
         }
@@ -156,7 +159,17 @@ namespace ScreenTranslator
                 if (y < box.Bottom - 1) Push(x, y + 1);
             }
 
-            return outside.Select(o => !o).ToArray();
+            // The shape was found on a smaller copy, so at full size its edge can hold a sliver of the
+            // outline; one pixel in from the edge is still well clear of the text
+            var inside = new bool[outside.Length];
+            for (int y = 0; y < box.Height; y++)
+                for (int x = 0; x < box.Width; x++)
+                {
+                    int i = y * box.Width + x;
+                    inside[i] = !outside[i] && x > 0 && y > 0 && x < box.Width - 1 && y < box.Height - 1
+                        && !outside[i - 1] && !outside[i + 1] && !outside[i - box.Width] && !outside[i + box.Width];
+                }
+            return inside;
         }
 
         /// <summary>Share of the bubble's shape that isn't white, i.e. its text.</summary>
@@ -173,8 +186,10 @@ namespace ScreenTranslator
             return area == 0 ? 0 : (double)ink / area;
         }
 
-        private static Bitmap MaskedCrop(Bitmap page, Rectangle bounds, bool[] inside, Rectangle box, double scale)
+        /// <returns>The crop, and the box around the dark pixels left in it, in page coordinates.</returns>
+        private static (Bitmap Image, Rectangle Ink) MaskedCrop(Bitmap page, Rectangle bounds, bool[] inside, Rectangle box, double scale)
         {
+            int left = int.MaxValue, top = int.MaxValue, right = -1, bottom = -1;
             var crop = page.Clone(bounds, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             var data = crop.LockBits(new Rectangle(0, 0, crop.Width, crop.Height),
                 System.Drawing.Imaging.ImageLockMode.ReadWrite, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
@@ -188,8 +203,16 @@ namespace ScreenTranslator
                     for (int x = 0; x < crop.Width; x++)
                     {
                         int sx = Math.Clamp((int)((bounds.X + x) * scale) - box.X, 0, box.Width - 1);
-                        if (inside[sy * box.Width + sx]) continue;
                         int p = y * data.Stride + x * 4;
+                        if (inside[sy * box.Width + sx])
+                        {
+                            if (pixels[p + 2] * 299 + pixels[p + 1] * 587 + pixels[p] * 114 < 160_000)
+                            {
+                                left = Math.Min(left, x); right = Math.Max(right, x);
+                                top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+                            }
+                            continue;
+                        }
                         pixels[p] = pixels[p + 1] = pixels[p + 2] = pixels[p + 3] = 255;
                     }
                 }
@@ -199,7 +222,9 @@ namespace ScreenTranslator
             {
                 crop.UnlockBits(data);
             }
-            return crop;
+            var ink = right < 0 ? Rectangle.Empty
+                : new Rectangle(bounds.X + left, bounds.Y + top, right - left + 1, bottom - top + 1);
+            return (crop, ink);
         }
     }
 }

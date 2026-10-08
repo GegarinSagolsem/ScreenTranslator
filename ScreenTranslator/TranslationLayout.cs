@@ -30,6 +30,12 @@ namespace ScreenTranslator
                 var text = translations[i];
                 if (string.IsNullOrWhiteSpace(text)) continue;
 
+                if (blocks[i].Bubble is { } bubble)
+                {
+                    canvas.Children.Add(CreateBubbleLabel(text, blocks[i], bubble, region, dpi, background, textScale));
+                    continue;
+                }
+
                 var placement = placements[i];
                 double maxBottom = RoomBelow(blocks, placements, i, region, dpi);
                 var label = CreateLabel(text, blocks[i], placement, maxBottom, dpi, background, textScale);
@@ -162,6 +168,62 @@ namespace ScreenTranslator
 
             return bottom;
         }
+
+        /// <summary>
+        /// A speech bubble's label fills the bubble, not just the original's columns: it's nearly as wide as
+        /// the bubble, centred on the original text (which it covers), and its font shrinks until it fits
+        /// inside. English reads badly a word or two per line, so a narrow bubble's label is a little wider.
+        /// </summary>
+        private static Border CreateBubbleLabel(string text, OcrBlock block, Rect bubble, Rect region, DpiScale dpi,
+                                                Brush background, double textScale)
+        {
+            var source = ToDips(block.Bounds, region, dpi);
+            var room = ToDips(bubble, region, dpi);
+            double width = Math.Min(Math.Max(Math.Max(room.Width * 0.9, source.Width + 4), MinBubbleLabelWidth), region.Width);
+
+            var content = new OutlinedText(text) { Alignment = TextAlignment.Center };
+            var label = new Border
+            {
+                Background = background,
+                Padding = new Thickness(2, 1, 2, 1),
+                CornerRadius = new CornerRadius(4),
+                Width = width,
+                MinHeight = source.Height + 2,
+                Child = content
+            };
+
+            double minFontSize = Math.Max(SmallestFontSize, MinFontSize * textScale);
+            double fontSize = Math.Clamp(block.LineHeight / dpi.DpiScaleY, MinFontSize, MaxFontSize) * textScale;
+            while (true)
+            {
+                content.FontSize = fontSize;
+                // A long word ("quadruplets") widens a small bubble's label rather than breaking in two
+                label.Width = Math.Min(Math.Max(width, content.LongestWordWidth(dpi.PixelsPerDip) + 4), region.Width);
+                label.InvalidateMeasure();
+                label.Measure(new Size(label.Width, double.PositiveInfinity));
+                if (label.DesiredSize.Height <= room.Height || fontSize <= minFontSize) break;
+                fontSize = Math.Max(minFontSize, fontSize - 1);
+            }
+
+            // Centred on the original text, then moved inside the bubble and the region
+            width = label.Width;
+            double height = label.DesiredSize.Height;
+            double left = Fit(source.X + (source.Width - width) / 2, width, room.Left, room.Right);
+            double top = Fit(source.Y + (source.Height - height) / 2, height, room.Top, room.Bottom);
+            Canvas.SetLeft(label, Fit(left, width, region.Left, region.Right));
+            Canvas.SetTop(label, Fit(top, height, region.Top, region.Bottom));
+            return label;
+        }
+
+        private const double MinBubbleLabelWidth = 60;
+
+        private static Rect ToDips(Rect pixels, Rect region, DpiScale dpi) => new(
+            region.X + pixels.X / dpi.DpiScaleX, region.Y + pixels.Y / dpi.DpiScaleY,
+            pixels.Width / dpi.DpiScaleX, pixels.Height / dpi.DpiScaleY);
+
+        /// <summary>Moves [start, start + size) inside [min, max) when it fits there; otherwise centres it on that range.</summary>
+        private static double Fit(double start, double size, double min, double max) =>
+            size <= max - min ? Math.Clamp(start, min, max - size) : min + (max - min - size) / 2;
 
         private static Border CreateLabel(string text, OcrBlock block, Placement placement, double maxBottom, DpiScale dpi,
                                           Brush background, double textScale)

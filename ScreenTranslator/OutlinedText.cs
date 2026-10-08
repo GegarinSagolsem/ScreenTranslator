@@ -40,6 +40,16 @@ namespace ScreenTranslator
 
         private double OutlineThickness => Math.Max(2.5, _fontSize / 6);
 
+        /// <summary>The width the longest word needs, so a label can be made wide enough not to break it.</summary>
+        public double LongestWordWidth(double pixelsPerDip)
+        {
+            return Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => new FormattedText(word, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face,
+                    _fontSize, Brushes.White, pixelsPerDip).WidthIncludingTrailingWhitespace)
+                .DefaultIfEmpty(0)
+                .Max() + 2 * Pad;
+        }
+
         protected override Size MeasureOverride(Size availableSize)
         {
             _formatted = new FormattedText(Text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face,
@@ -48,6 +58,7 @@ namespace ScreenTranslator
             if (bounded)
                 _formatted.MaxTextWidth = Math.Max(1, availableSize.Width - 2 * Pad);
             _formatted.TextAlignment = Alignment;
+            _formatted.Trimming = TextTrimming.None; // a word wider than the label wraps instead of ending in "…"
 
             double width = Alignment != TextAlignment.Left && bounded
                 ? availableSize.Width

@@ -40,6 +40,37 @@ public sealed class MangaTests
     }
 
     [TestMethod]
+    public async Task TightColumnsWithRubyAreReadWithoutTheRuby()
+    {
+        if (!OcrEngine.AvailableRecognizerLanguages.Any(l => l.LanguageTag.StartsWith("ja", StringComparison.OrdinalIgnoreCase)))
+            Assert.Inconclusive("The Windows OCR pack for Japanese isn't installed here.");
+
+        using var page = MangaPage.Draw(out _);
+        var ocr = new OcrHelper();
+        ocr.SetLanguage(Languages.All[0]);
+
+        var blocks = await ocr.RecognizeAsync(page, mergeLines: true, verticalText: true);
+
+        var text = blocks.Single(b => b.Text.Contains("紹介")).Text;
+        Assert.Contains("私達の", text); // the column whose ruby touches its neighbour isn't lost
+        Assert.DoesNotContain("わたし", text);
+        Assert.DoesNotContain("しょう", text);
+    }
+
+    [TestMethod]
+    [DataRow("ロー・:サンジも", "ロー…サンジも")]
+    [DataRow("なっ:", "なっ…")]
+    [DataRow("送っていた・・・", "送っていた…")]
+    [DataRow("ヴィンスモーク・サンジ", "ヴィンスモーク・サンジ")]
+    public void VerticalEllipsesAreReadBack(string read, string tidied) =>
+        Assert.AreEqual(tidied, OcrHelper.TidyEllipses(read));
+
+    [TestMethod]
+    public void AGarbledReadingScoresBelowACleanOne() =>
+        Assert.IsLessThan(OcrHelper.Plausibility(["どこへ行くの？", "島の奥だよ。"]),
+                          OcrHelper.Plausibility(["。と」へ冖何くの?・", "島の奥だよ。"]));
+
+    [TestMethod]
     [DataRow("とこへ行くの", true)]
     [DataRow("嵐が来た。", true)]
     [DataRow("|-|_", false)]
@@ -63,7 +94,7 @@ public sealed class MangaTests
         Assert.HasCount(expected.Count, blocks);
         foreach (var (text, area) in expected)
         {
-            var block = blocks.Single(b => Covers(new Rectangle((int)b.Bounds.X, (int)b.Bounds.Y, (int)b.Bounds.Width, (int)b.Bounds.Height), area));
+            var block = blocks.Single(b => b.Bubble is { } r && Covers(new Rectangle((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height), area));
             Assert.IsTrue(block.Vertical);
             Assert.IsGreaterThanOrEqualTo(0.75, Similarity(text, block.Text), $"read '{block.Text}' for '{text}'");
         }
