@@ -8,7 +8,7 @@ Pick the cheapest row that fits; move up a tier only when the task touches somet
 
 - **Never use Fable 5.** Route only to the three models below.
 - **Graph first.** Read `graphify-out/GRAPH_REPORT.md` and use `graphify query/explain/path` before opening files (see [`graphify.md`](graphify.md)). Refresh the graph after code changes.
-- **No secrets in source.** The DeepL key lives in `%AppData%\ScreenTranslator\config.json` or `DEEPL_API_KEY`. Any task that touches key handling also runs `/security-review`.
+- **No secrets in source.** Users' own DeepL / Google Cloud keys live in `%AppData%\ScreenTranslator\config.json` or the `DEEPL_API_KEY` / `GOOGLE_TRANSLATE_API_KEY` variables; the app never ships a key, and the log never records one. Any task that touches key handling also runs `/security-review`.
 - **Commits:** one short, clean sentence. No co-author lines, no AI or model names.
 - **Done means built.** Every code task ends with `dotnet build` passing with 0 warnings.
 
@@ -44,12 +44,15 @@ frontmatter.
 | XAML / overlay styling / tray menu changes | Sonnet 5 | medium | inline |
 | Overlay label layout (`TranslationLayout`, `OutlinedText`) | Sonnet 5 | medium | inline, verify with an offscreen render + overlap count |
 | Game bar widgets and layout (`GameBarWindow`, Fluent theme styles) | Sonnet 5 | medium | inline, verify by rendering offscreen (the bar is hidden from screenshots) |
-| Bug or feature inside one helper (`TranslationHelper`, `AppConfig`, `Languages`, `ApiKeyWindow`) | Sonnet 5 | medium | inline |
+| Bug or feature inside one helper (`AppConfig`, `Languages`, `Hotkeys`, `Log`) | Sonnet 5 | medium | inline |
+| A translation service (`GoogleClients`, `DeepLClient`) | Sonnet 5 | medium | inline, test against the live API |
+| Vertical text / OCR layout (`VerticalText`, `OcrHelper.MergeLines`) | Opus 5.5 | high | inline, test with rendered pages |
+| CI / release workflows (`.github/workflows`) | Haiku 4.5 | low | inline, run the publish steps locally first |
 | NuGet or target-framework upgrades | Sonnet 5 | medium | inline, then `/run` |
 | Unit tests for pure logic (`JoinWords`, `HasChanged`, DeepL client with a fake `HttpMessageHandler`) | Sonnet 5 | medium | **general-purpose** agent |
 | Reviewing a normal diff | Sonnet 5 | medium | `/code-review medium` |
 | Capture → OCR → translate pipeline (`ProcessFrameAsync`, `FrameGate`, line merging, frame versioning) | Opus 5.5 | high | inline, test with synthetic frame sequences |
-| Win32 interop (`NativeMethods`, hotkeys, window styles, capture exclusion, DPI) | Opus 5.5 | high | inline |
+| Win32 interop (`NativeMethods`, hotkeys, window styles, capture exclusion, multi-monitor DPI) | Opus 5.5 | high | inline, end-to-end test with a simulated drag |
 | Cross-file refactor of `MainWindow` (the graph's god node) | Opus 5.5 | high | **Plan** agent first, then inline |
 | New architecture-level feature | Opus 5.5 | xhigh | **Plan** agent, then implement |
 | DeepL glossary sync (resources created/deleted on the user's account) | Opus 5.5 | high | inline, test against the live API and clean up after |
@@ -62,20 +65,17 @@ Open improvements, each pre-routed. Numbers stay fixed when items are done, so t
 
 | # | Task | Model | Effort | Agent / skill |
 | --- | --- | --- | --- | --- |
-| 3 | Remember the last region, optionally per game/app | Sonnet 5 | medium | inline |
 | 5 | Subtitle mode: all translations in one panel below the region | Sonnet 5 | medium | inline |
 | 6 | Translation history widget in the game bar, copy last line | Sonnet 5 | medium | inline |
 | 7 | One-shot snip-and-translate mode | Sonnet 5 | medium | inline |
-| 8 | Claude as an alternative translator backend | Opus 5.5 | high | inline, read `/claude-api` first |
-| 9 | Multi-monitor support (virtual screen bounds, per-monitor DPI) | Opus 5.5 | xhigh | Plan → inline → `/run` |
 | 10 | Upscale small regions before OCR to read tiny fonts | Sonnet 5 | medium | inline, test with the scratch harness approach |
-| 11 | Configurable hotkeys in `config.json` + Settings widget | Sonnet 5 | medium | inline |
-| 12 | Encrypt the saved API key with DPAPI (`ProtectedData`) | Sonnet 5 | medium | inline → `/security-review` (Opus 5.5) |
-| 13 | Vertical Japanese text layout | Opus 5.5 | high | Plan → inline |
+| 12 | Encrypt the saved API keys with DPAPI (`ProtectedData`) | Sonnet 5 | medium | inline → `/security-review` (Opus 5.5) |
 | 14 | Start with Windows toggle | Haiku 4.5 | low | inline |
-| 15 | Log file in `%AppData%` for bug reports | Haiku 4.5 | low | inline |
-| 16 | Unit test project (`JoinWords`, `HasChanged`, `TranslationHelper`, `AppConfig`) | Sonnet 5 | medium | general-purpose |
-| 17 | GitHub Actions workflow: build on push, attach publish zip to releases | Haiku 4.5 | low | inline |
+| 16 | Unit test project (`Hotkey.Parse`, `FrameGate`, `MergeLines`, `VerticalText`, translation clients with a fake `HttpMessageHandler`) | Sonnet 5 | medium | general-purpose |
+| 18 | Vertical text on full manga pages: ignore drawings and panel borders, detect speech bubbles | Opus 5.5 | xhigh | Plan → inline, test on real pages |
+| 19 | Open the game bar on the monitor under the mouse | Sonnet 5 | medium | inline |
+
+Dropped by the owner: #3 (remember last region), #8 (Claude translator; free options preferred).
 
 ## Done
 
@@ -99,3 +99,10 @@ Completed in the 2026-10-08 overhaul session.
 | Fix overlapping labels (`TranslationLayout` fit-to-room), merging on web-style line spacing and text wrapping around photos | Opus 5.5 |
 | Background-only opacity down to 0 % with outlined subtitle-style text (`OutlinedText`) | Opus 5.5 |
 | Adjustable text size (game bar slider, tray Larger/Smaller/Reset, live re-layout) | Opus 5.5 |
+| #15: rolling log file (no screen text, translations or keys) + crash logging | Opus 5.5 |
+| Free Google Translate as default; DeepL and Google Cloud with the user's own key | Opus 5.5 |
+| #11: configurable hotkeys with an in-app editor | Opus 5.5 |
+| #9: overlay across all monitors, per-monitor DPI | Opus 5.5 |
+| #13: vertical Japanese and Chinese (column re-layout for OCR), Traditional Chinese | Opus 5.5 |
+| #17: GitHub Actions build + release (standalone single-file exe) | Opus 5.5 |
+| MIT license, README rewrite | Opus 5.5 |
