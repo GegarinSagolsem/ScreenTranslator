@@ -38,10 +38,21 @@ Get the latest version from the [Releases](../../releases) page:
 
 Unzip, run `ScreenTranslator.exe`, and drag a box over the text you want translated.
 
-## Requirements
+## Supported systems
 
-- Windows 10 version 2004 (build 19041) or Windows 11
-- The Windows OCR pack for each language you want to read (see below)
+| | |
+| --- | --- |
+| **Windows** | Windows 11, or Windows 10 version 2004 (May 2020 Update) or newer. Home, Pro and other editions; not S mode. |
+| **Processor** | 64-bit Intel or AMD (x64) PCs. Windows 11 on ARM (e.g. Snapdragon laptops) should run it through Windows' built-in x64 emulation, but that's untested. |
+| **Displays** | Any resolution and display scaling, one monitor or several. |
+| **Internet** | Needed for translation. Text recognition (OCR) runs offline on your PC. |
+| **Languages** | Reads Japanese, Chinese (Simplified and Traditional) and Korean, using the matching Windows OCR pack (below). Translates into English and 15 other languages. |
+
+**Not supported:** macOS, Linux, Android, iOS, 32-bit Windows, Windows 7 / 8 / 8.1, and Windows 10 before
+version 2004. Older Windows can't hide the overlay from screen capture, so the app shows a message and closes.
+
+**Games:** use **windowed** or **borderless (fullscreen windowed)** mode. In exclusive fullscreen the overlay
+may not appear on top and the game can look black to screen capture.
 
 ### Installing OCR languages
 
