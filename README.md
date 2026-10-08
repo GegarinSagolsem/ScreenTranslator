@@ -38,15 +38,20 @@ Get the latest version from the [Releases](../../releases) page:
 
 Unzip, run `ScreenTranslator.exe`, and drag a box over the text you want translated.
 
-## Supported systems
+## System requirements
 
-| | |
+| | Requirement |
 | --- | --- |
-| **Windows** | Windows 11, or Windows 10 version 2004 (May 2020 Update) or newer. Home, Pro and other editions; not S mode. |
-| **Processor** | 64-bit Intel or AMD (x64) PCs. Windows 11 on ARM (e.g. Snapdragon laptops) should run it through Windows' built-in x64 emulation, but that's untested. |
-| **Displays** | Any resolution and display scaling, one monitor or several. |
+| **Operating system** | Windows 11, or Windows 10 version 2004 (May 2020 Update) or newer. 64-bit; Home, Pro and other editions; not S mode. |
+| **Processor** | Any 64-bit Intel or AMD (x64) processor. Windows 11 on ARM (e.g. Snapdragon laptops) should run it through Windows' built-in x64 emulation, but that's untested. |
+| **Memory** | 4 GB RAM or more. The app itself uses about 200–350 MB. |
+| **Storage** | About 90 MB for the standalone download, or about 30 MB plus the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) for the smaller one. |
+| **Display** | Any resolution and display scaling, one monitor or several. |
 | **Internet** | Needed for translation. Text recognition (OCR) runs offline on your PC. |
-| **Languages** | Reads Japanese, Chinese (Simplified and Traditional) and Korean, using the matching Windows OCR pack (below). Translates into English and 15 other languages. |
+| **OCR language pack** | The Windows OCR pack for each language you want to read: Japanese, Chinese (Simplified or Traditional) or Korean (see below). |
+
+Measured on an AMD Ryzen 5 5500U laptop with 6 GB RAM: while watching a region the app uses about 0.3 % of the
+CPU, and new text is read and translated in about a second.
 
 **Not supported:** macOS, Linux, Android, iOS, 32-bit Windows, Windows 7 / 8 / 8.1, and Windows 10 before
 version 2004. Older Windows can't hide the overlay from screen capture, so the app shows a message and closes.
