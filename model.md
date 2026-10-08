@@ -47,7 +47,7 @@ frontmatter.
 | NuGet or target-framework upgrades | Sonnet 5 | medium | inline, then `/run` |
 | Unit tests for pure logic (`JoinWords`, `HasChanged`, DeepL client with a fake `HttpMessageHandler`) | Sonnet 5 | medium | **general-purpose** agent |
 | Reviewing a normal diff | Sonnet 5 | medium | `/code-review medium` |
-| Capture → OCR → translate pipeline (`ProcessFrameAsync`, timer re-entrancy, frame versioning) | Opus 5.5 | high | inline |
+| Capture → OCR → translate pipeline (`ProcessFrameAsync`, `FrameGate`, line merging, frame versioning) | Opus 5.5 | high | inline, test with synthetic frame sequences |
 | Win32 interop (`NativeMethods`, hotkeys, window styles, capture exclusion, DPI) | Opus 5.5 | high | inline |
 | Cross-file refactor of `MainWindow` (the graph's god node) | Opus 5.5 | high | **Plan** agent first, then inline |
 | New architecture-level feature | Opus 5.5 | xhigh | **Plan** agent, then implement |
@@ -57,14 +57,11 @@ frontmatter.
 
 ## Backlog
 
-Open improvements, each pre-routed.
+Open improvements, each pre-routed. Numbers stay fixed when items are done, so they can be referred to by number.
 
 | # | Task | Model | Effort | Agent / skill |
 | --- | --- | --- | --- | --- |
-| 1 | Wait for text to settle before OCR (typewriter text burns DeepL quota) | Opus 5.5 | high | inline |
-| 2 | Merge OCR lines into sentences before translating | Opus 5.5 | high | inline |
 | 3 | Remember the last region, optionally per game/app | Sonnet 5 | medium | inline |
-| 4 | Peek hotkey: hold to hide translations | Sonnet 5 | medium | inline |
 | 5 | Subtitle mode: all translations in one panel below the region | Sonnet 5 | medium | inline |
 | 6 | Translation history widget in the game bar, copy last line | Sonnet 5 | medium | inline |
 | 7 | One-shot snip-and-translate mode | Sonnet 5 | medium | inline |
@@ -95,3 +92,6 @@ Completed in the 2026-10-08 overhaul session.
 | DeepL usage in the tray tooltip and game bar | Opus 5.5 |
 | Glossary backed by DeepL glossaries (chosen after comparing four approaches on the live API) | Opus 5.5 |
 | Optional Xbox Game Bar–style panel: Translator / Glossary / Settings widgets, drag, pin, target-language picker | Opus 5.5 |
+| Backlog #1: `FrameGate` waits for text to settle (pixel-level change detection, blink-aware, 3 s cap) | Opus 5.5 |
+| Backlog #2: merge wrapped OCR lines into sentence blocks (toggle in Settings) | Opus 5.5 |
+| Backlog #4: hold `Ctrl+Shift+H` to peek at the original text | Opus 5.5 |
