@@ -21,6 +21,15 @@ namespace ScreenTranslator
         {
             base.OnStartup(e);
 
+            // Older Windows can't hide the overlay from screen capture, so the app would OCR its own labels
+            if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+            {
+                MessageBox.Show("ScreenTranslator needs Windows 11, or Windows 10 version 2004 (May 2020 Update) or newer.",
+                    "ScreenTranslator", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Shutdown();
+                return;
+            }
+
             // A second copy would fail to register the hotkeys and stack another overlay
             _instanceMutex = new Mutex(true, @"Local\ScreenTranslator", out bool isFirstInstance);
             if (!isFirstInstance)

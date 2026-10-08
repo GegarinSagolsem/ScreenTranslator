@@ -89,7 +89,8 @@ namespace ScreenTranslator
             _hwnd = new WindowInteropHelper(this).Handle;
             int style = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
             NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, style | NativeMethods.WS_EX_LAYERED);
-            NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
+            if (!NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE))
+                Log.Warn("Could not hide the overlay from screen capture; OCR may read the translations back");
             CoverAllMonitors();
 
             HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);

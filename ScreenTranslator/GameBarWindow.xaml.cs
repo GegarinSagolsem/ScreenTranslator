@@ -77,7 +77,8 @@ namespace ScreenTranslator
             {
                 _hwnd = new WindowInteropHelper(this).Handle;
                 // Like the overlay, never let the bar end up in the OCR'd screenshots
-                NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
+                if (!NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE))
+                    Log.Warn("Could not hide the game bar from screen capture");
             };
         }
 
