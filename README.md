@@ -16,6 +16,10 @@ out of the box, with no account or key needed. You can switch to DeepL or Google
 - **Works out of the box**: free Google translation with no signup. Bring your own DeepL or Google Cloud key if you want.
 - **Any monitor**: select a region on any screen, including monitors with different display scaling.
 - **Horizontal and vertical text**: vertical Japanese and Chinese (novels, manga) is read column by column, right to left.
+- **Manga pages**: speech bubbles are found and translated one by one, while the drawings around them are ignored.
+- **Subtitle mode**: show every translation in one panel below the region and keep the original text visible.
+- **Snip and translate**: drag over any text once and get its translation in a card you can copy from.
+- **Small text**: text as small as 12–14 px is read reliably by enlarging it before recognition.
 - **Whole sentences**: lines and columns that wrap are joined before translating, so the translator sees full sentences instead of fragments.
 - **Change detection**: text is only read once it has *settled*, so typewriter-style text isn't translated half-written.
 - **Labels that never overlap**: each translation covers its source text and shrinks to fit. The text is outlined like subtitles, so it stays readable at any background opacity, down to 0 % (text only).
@@ -104,13 +108,14 @@ Default hotkeys (change any of them in the game bar › **Settings**):
 | --- | --- |
 | `Ctrl+Shift+G` | Open / close the game bar |
 | `Ctrl+Shift+R` | Select a new region (`Esc` keeps the current one) |
+| `Ctrl+Shift+Y` | Snip and translate once (see below) |
 | `Ctrl+Shift+P` | Pause / resume (the region frame turns grey while paused) |
 | `Ctrl+Shift+O` | Cycle the background opacity (100 → 75 → 50 → 25 → 0 %); the text always stays solid |
 | Hold `Ctrl+Shift+H` | Peek: translations hide until you let go |
 | `Ctrl+Shift+1` – `4` | Source language: Japanese, Chinese (Simplified), Korean, Chinese (Traditional) |
 
 Everything is also in the tray icon's right-click menu (it shows your current hotkeys), along with
-**Text size**, **Translation settings…**, **Open log folder** and **Exit**. Hovering the tray icon shows the
+**Snip and translate…**, **Text size**, **Translation settings…**, **Open log folder** and **Exit**. Hovering the tray icon shows the
 active translation service, and for DeepL, this month's usage.
 
 ### Game bar
@@ -120,8 +125,8 @@ active translation service, and for DeepL, this month's usage.
 Press `Ctrl+Shift+G`, double-click the tray icon, or choose **Open game bar** from its menu. The screen
 dims and a home bar appears at the top with three widgets:
 
-- **Translator**: status, select region, pause, source and target language, vertical text, background
-  opacity, text size, and translation service / DeepL usage.
+- **Translator**: status, select region, pause, source and target language, vertical text, subtitle mode,
+  background opacity, text size, and translation service / DeepL usage.
 - **Glossary**: terms that must always translate a certain way (see below).
 - **Settings**: translation service and key, how often to check for new text, sentence joining, and the
   hotkey editor. Click a hotkey box and press new keys; Backspace turns a hotkey off and Esc cancels.
@@ -132,6 +137,20 @@ bar closes. It's then click-through, like pinned widgets in Xbox Game Bar.
 
 The bar is entirely optional: nothing appears unless you summon it, and you can turn its hotkey off.
 
+### Subtitle mode
+
+![Subtitle mode](docs/images/subtitles.png)
+
+Tick **Show translations as subtitles** in the Translator widget to keep the original text visible: every
+translation appears in one centred panel just below the region (or above it, if there's no room), like movie
+subtitles. Handy for learning, or when the original's layout matters.
+
+### Snip and translate
+
+Press `Ctrl+Shift+Y` (or tray › **Snip and translate…**) and drag over any text. A card pops up next to it
+with the translation, the original, and a **Copy translation** button. It closes with `Esc`, the ✕, or a
+click anywhere else. Your translated region, if you have one, carries on as before.
+
 ### Vertical text
 
 ![Vertical Japanese, original and translated](docs/images/vertical.png)
@@ -139,8 +158,13 @@ The bar is entirely optional: nothing appears unless you summon it, and you can 
 Japanese vertical text is recognised automatically. For **vertical Chinese**, or for the most accurate
 reading of vertical Japanese, tick **Vertical text** in the Translator widget. ScreenTranslator then finds
 each column, cuts it into characters and reads them as horizontal lines, which Windows OCR handles much
-better. Columns are read right to left and joined into paragraphs. Select just the text area; drawings
-and panel borders inside the region confuse the column detection.
+better. Columns are read right to left and joined into paragraphs.
+
+On a **manga page**, ScreenTranslator first looks for speech bubbles and narration boxes (enclosed white
+areas that hold text) and translates each one separately, so the drawings, screentone and panel borders
+around them are left alone. Pages without bubbles, like novels, are read as columns.
+
+![A manga page, original and translated bubble by bubble](docs/images/manga.png)
 
 ### Glossary
 
@@ -167,6 +191,7 @@ Settings are saved automatically in `%AppData%\ScreenTranslator\config.json`:
   "CaptureIntervalMs": 500,
   "MergeLines": true,
   "VerticalText": false,
+  "SubtitleMode": false,
   "Hotkeys": { "SelectRegion": "Ctrl+Alt+F9", "Peek": "" },
   "Glossary": [ { "Source": "モンキー・D・ルフィ", "Target": "Monkey D. Luffy" } ],
   "GameBarWidgets": {}
@@ -180,6 +205,7 @@ Settings are saved automatically in `%AppData%\ScreenTranslator\config.json`:
 - `TextScale`: multiplies the translation font size (0.5–2.0).
 - `CaptureIntervalMs`: how often the region is checked for changes (200–2000).
 - `MergeLines`: joins wrapped lines into sentences. Turn it off if a game's menu items get joined together.
+- `SubtitleMode`: show translations in one panel below the region instead of over the text.
 - `Hotkeys`: only the ones you changed; `""` turns a hotkey off. Delete the section to restore the defaults.
 - `GameBarWidgets`: widget positions and pins; delete it to reset the layout.
 
@@ -197,10 +223,12 @@ Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 git clone https://github.com/GegarinSagolsem/ScreenTranslator.git
 cd ScreenTranslator
 dotnet run --project ScreenTranslator
+dotnet test        # runs the automated tests
 ```
 
-Every push is built by GitHub Actions ([`build.yml`](.github/workflows/build.yml)). Pushing a version tag
-(`git tag v2.0.0 && git push origin v2.0.0`) publishes both download zips to a GitHub release
+Every push is built and tested by GitHub Actions ([`build.yml`](.github/workflows/build.yml)); the OCR tests
+are skipped there because GitHub's servers don't have the Japanese and Chinese OCR packs. Pushing a version tag
+(`git tag v2.1.0 && git push origin v2.1.0`) publishes the download zips to a GitHub release
 ([`release.yml`](.github/workflows/release.yml)).
 
 ## How it works
@@ -230,17 +258,20 @@ blinking "▼ next" arrow). Scenes that never stop moving are still read every 3
 | `ScreenCapture.cs` | Screen grab, pixel change detection, `FrameGate` settle logic |
 | `OcrHelper.cs` | Windows OCR, CJK word joining, merging lines and columns into blocks |
 | `VerticalText.cs` | Finds columns of vertical text and re-lays them as horizontal lines for OCR |
+| `SpeechBubbles.cs` | Finds speech bubbles and narration boxes on manga pages |
+| `SnipResultWindow.xaml(.cs)` | The card shown by snip and translate |
 | `TranslationHelper.cs` | Translation service choice, batching, caching |
 | `GoogleClients.cs`, `DeepLClient.cs` | The three translation services (DeepL also does glossary and usage) |
 | `TranslationLayout.cs`, `OutlinedText.cs` | Label placement without overlaps; outlined subtitle-style text |
 | `Hotkeys.cs` | Hotkey parsing and the list of bindable commands |
-| `AppConfig.cs`, `Languages.cs`, `Log.cs`, `NativeMethods.cs` | Settings, languages, log file, Win32 interop |
+| `AppConfig.cs`, `Languages.cs`, `Log.cs`, `NativeMethods.cs` | Settings (keys encrypted), languages, log file, Win32 interop |
+| `ScreenTranslator.Tests/` | Automated tests (MSTest) |
 
 ## Limitations
 
 - The game bar always opens on the primary monitor.
-- Vertical text works best on clean text areas; drawings or panel borders inside the region confuse column detection.
-- Very small fonts (under ~10 px) OCR poorly.
+- On manga pages, only text inside speech bubbles and narration boxes is translated; sound effects drawn into the art aren't.
+- Text smaller than about 10 px is still read poorly, even when enlarged.
 - Google's free endpoint is unofficial; under heavy use Google may rate-limit it for a while. Switch to a DeepL or Google Cloud key if that happens.
 
 ## License
