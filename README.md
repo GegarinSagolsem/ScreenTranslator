@@ -14,6 +14,7 @@ for translation.
 - **Whole sentences** — lines that wrap are joined before translating, so DeepL sees the full sentence instead of fragments.
 - **Batched, cached translation** — every block in a frame goes to DeepL in one request; repeated text comes from a local cache.
 - **Peek** — hold `Ctrl+Shift+H` to hide the translations and see the original text.
+- **Labels that never overlap** — each translation covers its source text and shrinks to fit above the next block. The text is outlined like subtitles, so it stays readable at any background opacity, down to 0 % (text only).
 - **Click-through overlay** — the app underneath stays fully usable, and the overlay is hidden from screen capture so it never re-reads its own output.
 - **Game bar** — an optional Xbox Game Bar–style panel (`Ctrl+Shift+G`) with Translator, Glossary and Settings widgets you can drag around and pin.
 - **Glossary** — character names and game terms always translate the way you choose, with correct grammar around them.
@@ -63,7 +64,7 @@ dotnet publish ScreenTranslator -c Release -r win-x64 --self-contained false -o 
 | `Ctrl+Shift+G` | Open / close the game bar (can be turned off in its Settings widget) |
 | `Ctrl+Shift+R` | Reselect the region (`Esc` keeps the current one) |
 | `Ctrl+Shift+P` | Pause / resume (the region frame turns grey while paused) |
-| `Ctrl+Shift+O` | Cycle overlay opacity (100 → 75 → 50 → 25 %) |
+| `Ctrl+Shift+O` | Cycle the background opacity (100 → 75 → 50 → 25 → 0 %); the text itself always stays solid |
 | Hold `Ctrl+Shift+H` | Peek: translations hide until you let go of `H` |
 | `Ctrl+Shift+1` | Source language: Japanese |
 | `Ctrl+Shift+2` | Source language: Chinese (Simplified) |
@@ -77,7 +78,7 @@ Hovering the tray icon shows this month's DeepL usage.
 Press `Ctrl+Shift+G`, double-click the tray icon, or choose **Open game bar** from its menu. The screen
 dims and a home bar appears at the top with three widgets:
 
-- **Translator** — status, select region, pause, source and target language, translation box opacity and
+- **Translator** — status, select region, pause, source and target language, background opacity (0–100 %) and
   DeepL usage this month.
 - **Glossary** — the terms that must always translate a certain way (see below).
 - **Settings** — DeepL API key, how often to check for new text, sentence joining, the `Ctrl+Shift+G` toggle and a hotkey list.
@@ -118,6 +119,7 @@ Settings are stored in `%AppData%\ScreenTranslator\config.json` and saved automa
 ```
 
 - `TargetLanguage` accepts any [DeepL target code](https://developers.deepl.com/docs/resources/supported-languages) (`EN-GB`, `DE`, `ES`, …).
+- `OverlayOpacity` is the opacity of the dark background behind translations only (0–1); the text is unaffected.
 - `CaptureIntervalMs` is how often the region is checked for changes (200–2000).
 - `MergeLines` joins wrapped lines into sentences (also in the game bar's Settings). Turn it off if a game's menu items get joined together.
 - `GameBarWidgets` stores widget positions and pins; delete it to reset the layout.
@@ -148,6 +150,8 @@ blinking "▼ next" arrow). Scenes that never stop moving are still read every 3
 | `App.xaml(.cs)` | Startup, single instance, tray menu, notifications |
 | `MainWindow.xaml(.cs)` | Region selection, capture loop, overlay drawing, hotkeys |
 | `GameBarWindow.xaml(.cs)` | Optional game bar: home bar, draggable/pinnable widgets (WPF Fluent theme) |
+| `TranslationLayout.cs` | Places labels over their source blocks without overlaps (fit-to-room font sizing) |
+| `OutlinedText.cs` | Subtitle-style white text with a black outline |
 | `ScreenCapture.cs` | Screen grab, pixel change detection, `FrameGate` settle logic |
 | `OcrHelper.cs` | Windows OCR, line bounds, CJK word joining, merging wrapped lines |
 | `TranslationHelper.cs` | DeepL client: batching, caching, glossary sync, usage, error messages |

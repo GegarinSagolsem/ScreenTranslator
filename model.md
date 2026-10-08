@@ -42,6 +42,7 @@ frontmatter.
 | Build, publish, smoke-launch the app | Haiku 4.5 | low | `/run` |
 | Write commit messages, tag a release | Haiku 4.5 | low | inline |
 | XAML / overlay styling / tray menu changes | Sonnet 5 | medium | inline |
+| Overlay label layout (`TranslationLayout`, `OutlinedText`) | Sonnet 5 | medium | inline, verify with an offscreen render + overlap count |
 | Game bar widgets and layout (`GameBarWindow`, Fluent theme styles) | Sonnet 5 | medium | inline, verify by rendering offscreen (the bar is hidden from screenshots) |
 | Bug or feature inside one helper (`TranslationHelper`, `AppConfig`, `Languages`, `ApiKeyWindow`) | Sonnet 5 | medium | inline |
 | NuGet or target-framework upgrades | Sonnet 5 | medium | inline, then `/run` |
@@ -95,3 +96,5 @@ Completed in the 2026-10-08 overhaul session.
 | Backlog #1: `FrameGate` waits for text to settle (pixel-level change detection, blink-aware, 3 s cap) | Opus 5.5 |
 | Backlog #2: merge wrapped OCR lines into sentence blocks (toggle in Settings) | Opus 5.5 |
 | Backlog #4: hold `Ctrl+Shift+H` to peek at the original text | Opus 5.5 |
+| Fix overlapping labels (`TranslationLayout` fit-to-room), merging on web-style line spacing and text wrapping around photos | Opus 5.5 |
+| Background-only opacity down to 0 % with outlined subtitle-style text (`OutlinedText`) | Opus 5.5 |
