@@ -38,6 +38,10 @@ Get the latest version from the [Releases](../../releases) page:
 
 Unzip, run `ScreenTranslator.exe`, and drag a box over the text you want translated.
 
+The downloads aren't code-signed, so the first time you run one Windows SmartScreen may say "Windows protected
+your PC". Click **More info › Run anyway**. The source is all here, and every release is built by GitHub Actions
+from this repository.
+
 ## System requirements
 
 | | Requirement |
@@ -84,7 +88,10 @@ Choose one in the game bar's **Settings** widget (or **Translation settings…**
 | **Google Cloud Translation** | [Your own](https://console.cloud.google.com/apis/credentials) | Google's official API with a free monthly allowance. Needs a Google Cloud project with the Cloud Translation API enabled. |
 
 ScreenTranslator never ships or shares a key. Yours is stored only on your PC, in
-`%AppData%\ScreenTranslator\config.json`. The `DEEPL_API_KEY` and `GOOGLE_TRANSLATE_API_KEY` environment
+`%AppData%\ScreenTranslator\config.json`.
+
+**Privacy:** text recognition runs entirely on your PC. Only the recognised text from the region you select is
+sent to the translation service you chose (Google or DeepL), never screenshots. Nothing is sent anywhere else. The `DEEPL_API_KEY` and `GOOGLE_TRANSLATE_API_KEY` environment
 variables override the saved keys.
 
 ## Usage
