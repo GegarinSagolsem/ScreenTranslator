@@ -1,0 +1,17 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Secrets — never commit API keys
+Secrets.cs
+*.env
+
+# Generated knowledge graph (rebuild locally, see graphify.md)
+graphify-out/
