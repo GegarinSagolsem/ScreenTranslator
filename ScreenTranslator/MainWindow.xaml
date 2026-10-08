@@ -24,30 +24,33 @@
                VerticalAlignment="Top"/>
         <Canvas x:Name="TranslationCanvas"/>
 
-        <!-- Shown while choosing a region -->
-        <Border x:Name="HintPanel"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Margin="0,48,0,0"
-                Padding="16,9"
-                CornerRadius="6"
-                Background="#E6202020">
-            <TextBlock x:Name="HintText"
-                       Foreground="White"
-                       FontSize="15"
-                       Text="Drag to select the area to translate"/>
-        </Border>
+        <!-- Sized to the primary monitor in code, so hints don't straddle two screens -->
+        <Grid x:Name="PrimaryArea" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <!-- Shown while choosing a region -->
+            <Border x:Name="HintPanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,48,0,0"
+                    Padding="16,9"
+                    CornerRadius="6"
+                    Background="#E6202020">
+                <TextBlock x:Name="HintText"
+                           Foreground="White"
+                           FontSize="15"
+                           Text="Drag to select the area to translate"/>
+            </Border>
 
-        <!-- Brief feedback for hotkeys (language, pause, opacity) -->
-        <Border x:Name="StatusPanel"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Margin="0,48,0,0"
-                Padding="14,7"
-                CornerRadius="6"
-                Background="#E6202020"
-                Visibility="Collapsed">
-            <TextBlock x:Name="StatusText" Foreground="White" FontSize="14"/>
-        </Border>
+            <!-- Brief feedback for hotkeys (language, pause, opacity) -->
+            <Border x:Name="StatusPanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,48,0,0"
+                    Padding="14,7"
+                    CornerRadius="6"
+                    Background="#E6202020"
+                    Visibility="Collapsed">
+                <TextBlock x:Name="StatusText" Foreground="White" FontSize="14"/>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

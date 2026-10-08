@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -89,6 +90,7 @@ namespace ScreenTranslator
             int style = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
             NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, style | NativeMethods.WS_EX_LAYERED);
             NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
+            CoverAllMonitors();
 
             HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
 
@@ -102,6 +104,23 @@ namespace ScreenTranslator
             _captureTimer.Stop();
             UnregisterHotkeys();
             _translator.Dispose();
+        }
+
+        /// <summary>
+        /// Stretches the overlay over every monitor, so a region can be selected on any of them, and keeps
+        /// the hint and status messages on the primary monitor.
+        /// </summary>
+        private void CoverAllMonitors()
+        {
+            var all = NativeMethods.VirtualScreen;
+            var primary = NativeMethods.PrimaryScreen;
+            NativeMethods.PlaceTopmost(_hwnd, all);
+
+            var dpi = VisualTreeHelper.GetDpi(this);
+            PrimaryArea.Margin = new Thickness((primary.X - all.X) / dpi.DpiScaleX, (primary.Y - all.Y) / dpi.DpiScaleY, 0, 0);
+            PrimaryArea.Width = primary.Width / dpi.DpiScaleX;
+            PrimaryArea.Height = primary.Height / dpi.DpiScaleY;
+            Log.Info($"Overlay covers {all.Width}x{all.Height} at {all.X},{all.Y} (primary {primary.Width}x{primary.Height}, scale {dpi.DpiScaleX:P0})");
         }
 
         #region Hotkeys
@@ -172,6 +191,11 @@ namespace ScreenTranslator
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            // Monitors were added, removed or rescaled. WPF also resizes the window on a DPI change,
+            // so stretch it back over every monitor once WPF is done.
+            if (msg is NativeMethods.WM_DISPLAYCHANGE or NativeMethods.WM_DPICHANGED)
+                Dispatcher.BeginInvoke(CoverAllMonitors);
+
             if (msg == NativeMethods.WM_HOTKEY && _hotkeys.TryGetValue(wParam.ToInt32(), out var action))
             {
                 action();
@@ -318,12 +342,15 @@ namespace ScreenTranslator
 
         private async Task ProcessFrameAsync()
         {
+            var timer = Stopwatch.StartNew();
             int version = _settingsVersion;
             var region = _selectedRegion;
             var dpi = VisualTreeHelper.GetDpi(this);
 
-            int x = (int)Math.Round((Left + region.X) * dpi.DpiScaleX);
-            int y = (int)Math.Round((Top + region.Y) * dpi.DpiScaleY);
+            // The overlay spans every monitor and may start left of / above the primary one
+            NativeMethods.GetWindowRect(_hwnd, out var window);
+            int x = window.Left + (int)Math.Round(region.X * dpi.DpiScaleX);
+            int y = window.Top + (int)Math.Round(region.Y * dpi.DpiScaleY);
             int width = (int)Math.Round(region.Width * dpi.DpiScaleX);
             int height = (int)Math.Round(region.Height * dpi.DpiScaleY);
             if (width <= 0 || height <= 0) return;
@@ -356,6 +383,7 @@ namespace ScreenTranslator
             // Swap all overlays at once so they don't flicker in line by line
             _drawn = (blocks, translations, region, dpi);
             RedrawLabels();
+            Log.Info($"Translated {blocks.Count} block(s) in {timer.ElapsedMilliseconds} ms");
             _drawnSignature = signature;
         }
 

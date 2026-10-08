@@ -33,6 +33,39 @@ namespace ScreenTranslator
         [DllImport("user32.dll")]
         public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+        public const int WM_DISPLAYCHANGE = 0x007E;
+        public const int WM_DPICHANGED = 0x02E0;
+
+        private const int SM_CXSCREEN = 0, SM_CYSCREEN = 1;
+        private const int SM_XVIRTUALSCREEN = 76, SM_YVIRTUALSCREEN = 77, SM_CXVIRTUALSCREEN = 78, SM_CYVIRTUALSCREEN = 79;
+        private static readonly IntPtr HWND_TOPMOST = new(-1);
+        private const uint SWP_NOACTIVATE = 0x0010;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left, Top, Right, Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int index);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+        /// <summary>The rectangle spanning every monitor, in physical pixels (the primary monitor starts at 0,0).</summary>
+        public static System.Drawing.Rectangle VirtualScreen => new(
+            GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+
+        public static System.Drawing.Rectangle PrimaryScreen => new(0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+
+        public static void PlaceTopmost(IntPtr hwnd, System.Drawing.Rectangle bounds) =>
+            SetWindowPos(hwnd, HWND_TOPMOST, bounds.X, bounds.Y, bounds.Width, bounds.Height, SWP_NOACTIVATE);
+
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
 
