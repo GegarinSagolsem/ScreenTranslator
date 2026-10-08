@@ -329,12 +329,12 @@ namespace ScreenTranslator
 
             KeyLabel.Text = service.Service == TranslationService.DeepL ? "Your DeepL API key" : "Your Google Cloud API key";
             KeyLink.NavigateUri = new Uri(service.KeyUrl);
-            ApiKeyBox.Password = service.Service == TranslationService.DeepL ? _config.DeepLApiKey : _config.GoogleCloudApiKey;
+            ApiKeyBox.Password = _config.GetSavedApiKey(service.Service);
 
             var variable = AppConfig.KeyVariable(service.Service);
             KeyStatus.Text = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable!))
                 ? $"The {variable} environment variable is set and overrides this key."
-                : "Stored only on this PC, never shared.";
+                : "Stored encrypted on this PC, never shared.";
         }
 
         private void RefreshUsage()

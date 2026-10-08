@@ -59,6 +59,40 @@ public sealed class AppConfigTests
     }
 
     [TestMethod]
+    public void PlainTextKeysFromOldConfigsAreEncryptedOnDisk()
+    {
+        var config = LoadJson("{\"DeepLApiKey\":\"abc:fx\",\"GoogleCloudApiKey\":\"AIza-test\"}");
+        var onDisk = File.ReadAllText(_files[^1]);
+
+        Assert.AreEqual("abc:fx", config.GetSavedApiKey(TranslationService.DeepL));
+        Assert.AreEqual("AIza-test", config.GetSavedApiKey(TranslationService.GoogleCloud));
+        Assert.DoesNotContain("abc:fx", onDisk);
+        Assert.DoesNotContain("AIza-test", onDisk);
+        Assert.Contains("DeepLApiKeyProtected", onDisk);
+    }
+
+    [TestMethod]
+    public void SavedKeysSurviveAReload()
+    {
+        var config = LoadJson("{}");
+        config.SetApiKey(TranslationService.DeepL, "  my-key:fx  ");
+        config.Save();
+
+        var reloaded = AppConfig.LoadFrom(_files[^1]);
+
+        Assert.AreEqual("my-key:fx", reloaded.GetSavedApiKey(TranslationService.DeepL));
+        Assert.DoesNotContain("my-key", File.ReadAllText(_files[^1]));
+    }
+
+    [TestMethod]
+    public void KeyEncryptedElsewhereIsIgnoredNotCrashed()
+    {
+        var config = LoadJson("{\"DeepLApiKeyProtected\":\"bm90IHJlYWxseSBlbmNyeXB0ZWQ=\"}");
+
+        Assert.AreEqual("", config.GetSavedApiKey(TranslationService.DeepL));
+    }
+
+    [TestMethod]
     public void OutOfRangeValuesAreClamped()
     {
         var config = LoadJson("{\"OverlayOpacity\":5,\"TextScale\":9,\"CaptureIntervalMs\":10}");
