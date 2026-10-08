@@ -131,11 +131,12 @@ namespace ScreenTranslator
         private async Task<string[]> RequestAsync(string[] texts, string sourceLang, string targetLang)
         {
             var body = JsonSerializer.Serialize(new { q = texts, source = sourceLang, target = targetLang, format = "text" });
-            using var request = new HttpRequestMessage(HttpMethod.Post,
-                $"https://translation.googleapis.com/language/translate/v2?key={Uri.EscapeDataString(apiKey)}")
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://translation.googleapis.com/language/translate/v2")
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
+            // A header rather than ?key= in the URL, which can end up in proxy and network logs
+            request.Headers.Add("X-goog-api-key", apiKey);
 
             HttpResponseMessage response;
             try
