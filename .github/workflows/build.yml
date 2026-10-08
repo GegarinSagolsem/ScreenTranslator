@@ -1,0 +1,28 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # The repo keeps a 0-warning build, so any new warning fails CI
+      - name: Build
+        run: dotnet build ScreenTranslator.slnx -c Release -warnaserror
+
+      - name: Publish test build
+        run: dotnet publish ScreenTranslator/ScreenTranslator.csproj -c Release -r win-x64 --self-contained false -o publish
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ScreenTranslator-${{ github.sha }}
+          path: publish/
