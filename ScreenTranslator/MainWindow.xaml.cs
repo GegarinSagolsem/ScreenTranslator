@@ -390,7 +390,12 @@ namespace ScreenTranslator
 
         private void RedrawLabels()
         {
-            if (_drawn is { } d)
+            if (_drawn is not { } d) return;
+
+            if (_config.SubtitleMode)
+                TranslationLayout.DrawSubtitles(TranslationCanvas, d.Blocks, d.Translations, d.Region,
+                    new Rect(0, 0, ActualWidth, ActualHeight), d.Dpi, _overlayBrush, _config.TextScale);
+            else
                 TranslationLayout.Draw(TranslationCanvas, d.Blocks, d.Translations, d.Region, d.Dpi, _overlayBrush, _config.TextScale);
         }
 
@@ -462,6 +467,14 @@ namespace ScreenTranslator
         {
             _translator.SetGlossary(_config.Glossary);
             ResetFrame();
+        }
+
+        public void SetSubtitleMode(bool subtitles)
+        {
+            _config.SubtitleMode = subtitles;
+            _config.Save();
+            Log.Info($"Subtitle mode: {subtitles}");
+            RedrawLabels();
         }
 
         public void SetVerticalText(bool vertical)

@@ -21,6 +21,9 @@ namespace ScreenTranslator
 
         public string Text { get; }
 
+        /// <summary>Centred text fills the width it's given, so its lines centre within it.</summary>
+        public TextAlignment Alignment { get; init; } = TextAlignment.Left;
+
         public double FontSize
         {
             get => _fontSize;
@@ -41,10 +44,15 @@ namespace ScreenTranslator
         {
             _formatted = new FormattedText(Text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face,
                 _fontSize, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            if (!double.IsInfinity(availableSize.Width))
+            bool bounded = !double.IsInfinity(availableSize.Width);
+            if (bounded)
                 _formatted.MaxTextWidth = Math.Max(1, availableSize.Width - 2 * Pad);
+            _formatted.TextAlignment = Alignment;
 
-            return new Size(_formatted.WidthIncludingTrailingWhitespace + 2 * Pad, _formatted.Height + 2 * Pad);
+            double width = Alignment != TextAlignment.Left && bounded
+                ? availableSize.Width
+                : _formatted.WidthIncludingTrailingWhitespace + 2 * Pad;
+            return new Size(width, _formatted.Height + 2 * Pad);
         }
 
         protected override void OnRender(DrawingContext dc)

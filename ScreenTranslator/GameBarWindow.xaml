@@ -182,6 +182,10 @@
                                   ToolTip="For vertical Chinese, as in novels and manga. Japanese vertical text is detected automatically."
                                   Checked="VerticalTextCheck_Changed" Unchecked="VerticalTextCheck_Changed"/>
 
+                        <CheckBox x:Name="SubtitleModeCheck" Margin="0,4,0,0" Content="Show translations as subtitles"
+                                  ToolTip="All translations in one panel below the region, so the original text stays visible."
+                                  Checked="SubtitleModeCheck_Changed" Unchecked="SubtitleModeCheck_Changed"/>
+
                         <TextBlock Style="{StaticResource FieldLabel}" Text="Translate to"/>
                         <ComboBox x:Name="TargetLanguageBox" DisplayMemberPath="Name" HorizontalAlignment="Stretch"
                                   SelectionChanged="TargetLanguage_Changed"/>

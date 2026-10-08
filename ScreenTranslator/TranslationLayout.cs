@@ -40,6 +40,47 @@ namespace ScreenTranslator
         }
 
         /// <summary>
+        /// Subtitle mode: every translation in one centred panel below the region (above it, or inside its
+        /// bottom edge, when there's no room), so the original text stays fully visible.
+        /// </summary>
+        /// <param name="screen">The area the panel must stay inside, in DIPs (the overlay window).</param>
+        public static void DrawSubtitles(Canvas canvas, IReadOnlyList<OcrBlock> blocks, IReadOnlyList<string?> translations,
+                                         Rect region, Rect screen, DpiScale dpi, Brush background, double textScale = 1.0)
+        {
+            canvas.Children.Clear();
+            var text = string.Join("\n", translations.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t!.Trim()));
+            if (text.Length == 0) return;
+
+            double lineHeight = blocks.Count == 0 ? 20 : blocks.Select(b => b.LineHeight).Order().ElementAt(blocks.Count / 2) / dpi.DpiScaleY;
+            double width = Math.Min(Math.Max(region.Width, 360), screen.Width);
+            double left = Math.Clamp(region.X + (region.Width - width) / 2, screen.Left, screen.Right - width);
+
+            var panel = new Border
+            {
+                Background = background,
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 6, 12, 8),
+                Width = width,
+                Child = new OutlinedText(text)
+                {
+                    FontSize = Math.Clamp(lineHeight * 0.8, 14, MaxFontSize) * textScale,
+                    Alignment = TextAlignment.Center
+                }
+            };
+            panel.Measure(new Size(width, double.PositiveInfinity));
+            double height = panel.DesiredSize.Height;
+
+            const double gap = 6;
+            double top = region.Bottom + gap + height <= screen.Bottom ? region.Bottom + gap
+                : region.Top - gap - height >= screen.Top ? region.Top - gap - height
+                : Math.Max(screen.Top, region.Bottom - gap - height);
+
+            Canvas.SetLeft(panel, left);
+            Canvas.SetTop(panel, top);
+            canvas.Children.Add(panel);
+        }
+
+        /// <summary>
         /// A paragraph that wraps under a photo has lines starting left of its label (which sits beside
         /// the photo). Cover those parts with the same background, so no stray original text shows.
         /// </summary>
