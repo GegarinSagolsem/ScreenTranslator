@@ -15,3 +15,7 @@ Secrets.cs
 
 # Generated knowledge graph (rebuild locally, see graphify.md)
 graphify-out/
+
+# Local AI-workflow notes (kept on this PC, not published)
+model.md
+graphify.md

@@ -217,11 +217,6 @@ blinking "▼ next" arrow). Scenes that never stop moving are still read every 3
 - Very small fonts (under ~10 px) OCR poorly.
 - Google's free endpoint is unofficial; under heavy use Google may rate-limit it for a while. Switch to a DeepL or Google Cloud key if that happens.
 
-## Contributing
-
-See [`model.md`](model.md) for how tasks in this repo are split between AI models and agents, and
-[`graphify.md`](graphify.md) for the code knowledge graph used to navigate the codebase.
-
 ## License
 
 [MIT](LICENSE)
