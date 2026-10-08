@@ -1,339 +1,409 @@
-﻿using System;
-using System.Linq;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Interop;
+using System.Windows.Threading;
 
 namespace ScreenTranslator
 {
     public partial class MainWindow : Window
     {
-        private const int WS_EX_TRANSPARENT = 0x00000020;
-        private const int WS_EX_LAYERED = 0x00080000;
-        private const int GWL_EXSTYLE = -20;
-        private Rect _selectedRegion;
+        private const double MinSelectionSize = 12;
 
-        private System.Windows.Point _startPoint;
-        private bool _isSelecting = false;
+        private static readonly Brush DimBrush = new SolidColorBrush(Color.FromArgb(0x44, 0, 0, 0));
+
+        private readonly AppConfig _config;
+        private readonly OcrHelper _ocr = new();
+        private readonly TranslationHelper _translator = new();
+        private readonly DispatcherTimer _captureTimer = new();
+        private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(1.5) };
+        private readonly Dictionary<int, Action> _hotkeys = new();
+        private readonly SolidColorBrush _overlayBrush;
+        private IntPtr _hwnd;
+
+        private Rect _selectedRegion = Rect.Empty;
+        private Rect _previousRegion = Rect.Empty;
+        private Point _startPoint;
+        private bool _isChoosingRegion = true;
+        private bool _isDragging;
+        private bool _isPaused;
+        private bool _isProcessing;
         private byte[]? _lastFrameBytes;
 
-        [DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hwnd, int index);
+        // Bumped whenever region/language/key changes so in-flight frames get discarded
+        private int _settingsVersion;
 
-        [DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
-
-        private ScreenCapture _screenCapture = new ScreenCapture();
-        private System.Windows.Threading.DispatcherTimer? _captureTimer;
-        private OcrHelper _ocrHelper = new OcrHelper();
-        private TranslationHelper _translator = new TranslationHelper();
-
-        [DllImport("user32.dll")]
-        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
-
-        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
-
-        [DllImport("user32.dll")]
-        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-        [DllImport("user32.dll")]
-        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-        private string[] _ocrLangs = { "ja", "zh-Hans", "ko" };
-        private string[] _targetLangs = { "EN", "EN", "EN" };
-        private int _langIndex = 0;
-        private double _overlayOpacity = 0.75;
-
-        private const int HOTKEY_ID_RESELECT = 9000;
-        private const int HOTKEY_ID_PAUSE = 9001;
-        private const uint MOD_CONTROL = 0x0002;
-        private const uint MOD_SHIFT = 0x0004;
-        private const uint VK_R = 0x52; // R key
-        private const uint VK_P = 0x50; // P key
-        private const int HOTKEY_ID_OPACITY = 9003;
-        private const uint VK_O = 0x4F; // O key
-        private const int HOTKEY_ID_LANG_1 = 9010;
-        private const int HOTKEY_ID_LANG_2 = 9011;
-        private const int HOTKEY_ID_LANG_3 = 9012;
-        private const uint VK_1 = 0x31;
-        private const uint VK_2 = 0x32;
-        private const uint VK_3 = 0x33;
-
-        public MainWindow()
+        public MainWindow(AppConfig config)
         {
             InitializeComponent();
-            this.Width = SystemParameters.PrimaryScreenWidth;
-            this.Height = SystemParameters.PrimaryScreenHeight;
+            _config = config;
+            _overlayBrush = new SolidColorBrush(Colors.Black) { Opacity = config.OverlayOpacity };
+
+            Width = SystemParameters.PrimaryScreenWidth;
+            Height = SystemParameters.PrimaryScreenHeight;
+
+            _captureTimer.Interval = TimeSpan.FromMilliseconds(config.CaptureIntervalMs);
+            _captureTimer.Tick += CaptureTimer_Tick;
+            _statusTimer.Tick += (_, _) => { _statusTimer.Stop(); StatusPanel.Visibility = Visibility.Collapsed; };
+
+            _translator.SetApiKey(config.GetApiKey());
+            ApplyLanguage(Languages.Find(config.SourceLanguage));
+
             SourceInitialized += MainWindow_SourceInitialized;
+            Closed += MainWindow_Closed;
         }
 
-        private bool _isPaused = false;
-
-        private void ReselectRegion()
-        {
-            System.Diagnostics.Debug.WriteLine("Reselect triggered.");
-
-            _captureTimer?.Stop();
-            ClearTranslationOverlays();
-            SelectionBox.Visibility = Visibility.Collapsed;
-            SelectionBox.Width = 0;
-            SelectionBox.Height = 0;
-
-            // Turn off click-through so we can drag-select again
-            var hwnd = new WindowInteropHelper(this).Handle;
-            int extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle & ~WS_EX_TRANSPARENT);
-        }
-        public void TogglePauseFromTray() => TogglePause();
-        public void ReselectRegionFromTray() => ReselectRegion();
-        private void TogglePause()
-        {
-            _isPaused = !_isPaused;
-            System.Diagnostics.Debug.WriteLine(_isPaused ? "Paused." : "Resumed.");
-
-            if (_isPaused)
-                _captureTimer?.Stop();
-            else
-                _captureTimer?.Start();
-        }
-
-        private (int x, int y, int width, int height) GetPhysicalPixelRegion()
-        {
-            var source = PresentationSource.FromVisual(this);
-            double dpiX = 1.0, dpiY = 1.0;
-
-            if (source?.CompositionTarget != null)
-            {
-                dpiX = source.CompositionTarget.TransformToDevice.M11;
-                dpiY = source.CompositionTarget.TransformToDevice.M22;
-            }
-
-            int x = (int)(_selectedRegion.X * dpiX);
-            int y = (int)(_selectedRegion.Y * dpiY);
-            int width = (int)(_selectedRegion.Width * dpiX);
-            int height = (int)(_selectedRegion.Height * dpiY);
-
-            return (x, y, width, height);
-        }
+        public SourceLanguage CurrentLanguage => _ocr.CurrentLanguage;
 
         private void MainWindow_SourceInitialized(object? sender, EventArgs e)
         {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            int extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle | WS_EX_LAYERED);
+            _hwnd = new WindowInteropHelper(this).Handle;
+            int style = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+            NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, style | NativeMethods.WS_EX_LAYERED);
+            NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
 
-            SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            HwndSource.FromHwnd(_hwnd)?.AddHook(WndProc);
+            RegisterHotkeys();
+        }
 
-            RegisterHotKey(hwnd, HOTKEY_ID_RESELECT, MOD_CONTROL | MOD_SHIFT, VK_R);
-            RegisterHotKey(hwnd, HOTKEY_ID_PAUSE, MOD_CONTROL | MOD_SHIFT, VK_P);
-            RegisterHotKey(hwnd, HOTKEY_ID_OPACITY, MOD_CONTROL | MOD_SHIFT, VK_O);
-            RegisterHotKey(hwnd, HOTKEY_ID_LANG_1, MOD_CONTROL | MOD_SHIFT, VK_1);
-            RegisterHotKey(hwnd, HOTKEY_ID_LANG_2, MOD_CONTROL | MOD_SHIFT, VK_2);
-            RegisterHotKey(hwnd, HOTKEY_ID_LANG_3, MOD_CONTROL | MOD_SHIFT, VK_3);
+        private void MainWindow_Closed(object? sender, EventArgs e)
+        {
+            _captureTimer.Stop();
+            foreach (var id in _hotkeys.Keys)
+                NativeMethods.UnregisterHotKey(_hwnd, id);
+            _translator.Dispose();
+        }
 
-            var source = HwndSource.FromHwnd(hwnd);
-            source?.AddHook(WndProc);
+        #region Hotkeys
+
+        private void RegisterHotkeys()
+        {
+            var failed = new List<string>();
+
+            void Register(int id, char key, Action action)
+            {
+                const uint modifiers = NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT;
+                if (NativeMethods.RegisterHotKey(_hwnd, id, modifiers, key))
+                    _hotkeys[id] = action;
+                else
+                    failed.Add($"Ctrl+Shift+{key}");
+            }
+
+            Register(1, 'R', BeginSelection);
+            Register(2, 'P', TogglePause);
+            Register(3, 'O', CycleOpacity);
+            for (int i = 0; i < Languages.All.Length; i++)
+            {
+                int index = i;
+                Register(10 + i, (char)('1' + i), () => SetLanguage(index));
+            }
+
+            if (failed.Count > 0)
+                App.Notify("Hotkeys unavailable", $"Another app is already using {string.Join(", ", failed)}. Use the tray menu instead.");
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            const int WM_HOTKEY = 0x0312;
-
-            if (msg == WM_HOTKEY)
+            if (msg == NativeMethods.WM_HOTKEY && _hotkeys.TryGetValue(wParam.ToInt32(), out var action))
             {
-                int id = wParam.ToInt32();
-
-                if (id == HOTKEY_ID_RESELECT)
-                {
-                    ReselectRegion();
-                    handled = true;
-                }
-                else if (id == HOTKEY_ID_PAUSE)
-                {
-                    TogglePause();
-                    handled = true;
-                }
-                else if (id == HOTKEY_ID_LANG_1)
-                {
-                    SetLanguage(0);
-                    handled = true;
-                }
-                else if (id == HOTKEY_ID_LANG_2)
-                {
-                    SetLanguage(1);
-                    handled = true;
-                }
-                else if (id == HOTKEY_ID_LANG_3)
-                {
-                    SetLanguage(2);
-                    handled = true;
-                }
-                else if (id == HOTKEY_ID_OPACITY)
-                {
-                    CycleOpacity();
-                    handled = true;
-                }
+                action();
+                handled = true;
             }
 
             return IntPtr.Zero;
         }
-        private void Window_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+
+        #endregion
+
+        #region Region selection
+
+        public void BeginSelection()
         {
+            _captureTimer.Stop();
+            _settingsVersion++;
+            if (!_selectedRegion.IsEmpty)
+                _previousRegion = _selectedRegion;
+
+            TranslationCanvas.Children.Clear();
+            SelectionBox.Visibility = Visibility.Collapsed;
+            HintText.Text = _previousRegion.IsEmpty
+                ? "Drag to select the area to translate"
+                : "Drag to select a new area  ·  Esc to keep the current one";
+            SetChoosingRegion(true);
+            Activate();
+        }
+
+        private void SetChoosingRegion(bool choosing)
+        {
+            _isChoosingRegion = choosing;
+            RootGrid.Background = choosing ? DimBrush : Brushes.Transparent;
+            HintPanel.Visibility = choosing ? Visibility.Visible : Visibility.Collapsed;
+            if (choosing) StatusPanel.Visibility = Visibility.Collapsed;
+
+            // Click-through while translating, so the app underneath stays usable
+            int style = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+            style = choosing ? style & ~NativeMethods.WS_EX_TRANSPARENT : style | NativeMethods.WS_EX_TRANSPARENT;
+            NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, style);
+        }
+
+        private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isChoosingRegion || e.ChangedButton != MouseButton.Left) return;
+
             _startPoint = e.GetPosition(RootGrid);
-            _isSelecting = true;
+            _isDragging = true;
+            CaptureMouse();
+            ShowSelectionBox(new Rect(_startPoint, _startPoint));
+        }
 
+        private void Window_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+                ShowSelectionBox(new Rect(_startPoint, e.GetPosition(RootGrid)));
+        }
+
+        private void Window_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isDragging || e.ChangedButton != MouseButton.Left) return;
+
+            _isDragging = false;
+            ReleaseMouseCapture();
+
+            var region = new Rect(_startPoint, e.GetPosition(RootGrid));
+            if (region.Width < MinSelectionSize || region.Height < MinSelectionSize)
+            {
+                // A click, not a drag: stay in selection mode
+                SelectionBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            StartTranslating(region);
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape || !_isChoosingRegion) return;
+
+            if (_isDragging)
+            {
+                _isDragging = false;
+                ReleaseMouseCapture();
+                SelectionBox.Visibility = Visibility.Collapsed;
+            }
+            else if (!_previousRegion.IsEmpty)
+            {
+                StartTranslating(_previousRegion);
+            }
+        }
+
+        private void ShowSelectionBox(Rect rect)
+        {
+            SelectionBox.Margin = new Thickness(rect.X, rect.Y, 0, 0);
+            SelectionBox.Width = rect.Width;
+            SelectionBox.Height = rect.Height;
             SelectionBox.Visibility = Visibility.Visible;
-            SelectionBox.Width = 0;
-            SelectionBox.Height = 0;
         }
 
-        private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+        private void StartTranslating(Rect region)
         {
-            if (!_isSelecting) return;
+            Debug.WriteLine($"Region locked: {region}");
+            _selectedRegion = region;
+            ShowSelectionBox(region);
+            SetChoosingRegion(false);
 
-            var currentPoint = e.GetPosition(RootGrid);
-
-            double x = Math.Min(_startPoint.X, currentPoint.X);
-            double y = Math.Min(_startPoint.Y, currentPoint.Y);
-            double width = Math.Abs(currentPoint.X - _startPoint.X);
-            double height = Math.Abs(currentPoint.Y - _startPoint.Y);
-
-            SelectionBox.Margin = new Thickness(x, y, 0, 0);
-            SelectionBox.Width = width;
-            SelectionBox.Height = height;
-        }
-
-        private void Window_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            _isSelecting = false;
-
-            _selectedRegion = new Rect(
-                SelectionBox.Margin.Left,
-                SelectionBox.Margin.Top,
-                SelectionBox.Width,
-                SelectionBox.Height);
-
-            System.Diagnostics.Debug.WriteLine($"Region locked: {_selectedRegion}");
-
-            var hwnd = new WindowInteropHelper(this).Handle;
-            int extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            SetWindowLong(hwnd, GWL_EXSTYLE, extendedStyle | WS_EX_TRANSPARENT);
-
-            StartCaptureLoop();
-        }
-
-        private void StartCaptureLoop()
-        {
-            _captureTimer?.Stop();
-
-            _captureTimer = new System.Windows.Threading.DispatcherTimer();
-            _captureTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _captureTimer.Tick += CaptureTimer_Tick;
+            _isPaused = false;
+            SelectionBox.Stroke = Brushes.Red;
+            ResetFrame();
             _captureTimer.Start();
         }
 
+        #endregion
+
+        #region Capture → OCR → translate
+
         private async void CaptureTimer_Tick(object? sender, EventArgs e)
         {
-            var (x, y, width, height) = GetPhysicalPixelRegion();
+            // OCR + DeepL can take longer than one tick; never run two frames at once
+            if (_isProcessing) return;
 
+            _isProcessing = true;
+            try
+            {
+                await ProcessFrameAsync();
+            }
+            catch (TranslationException ex)
+            {
+                App.Notify("Translation failed", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // e.g. CopyFromScreen fails while the UAC / lock screen is up
+                Debug.WriteLine($"Frame failed: {ex}");
+            }
+            finally
+            {
+                _isProcessing = false;
+            }
+        }
+
+        private async Task ProcessFrameAsync()
+        {
+            int version = _settingsVersion;
+            var region = _selectedRegion;
+            var dpi = VisualTreeHelper.GetDpi(this);
+
+            int x = (int)Math.Round((Left + region.X) * dpi.DpiScaleX);
+            int y = (int)Math.Round((Top + region.Y) * dpi.DpiScaleY);
+            int width = (int)Math.Round(region.Width * dpi.DpiScaleX);
+            int height = (int)Math.Round(region.Height * dpi.DpiScaleY);
             if (width <= 0 || height <= 0) return;
 
-            var bitmap = _screenCapture.CaptureRegion(x, y, width, height);
-            var currentBytes = ScreenCapture.BitmapToBytes(bitmap);
+            var lines = await Task.Run(() => CaptureAndRecognizeAsync(x, y, width, height));
+            if (lines == null) return; // screen unchanged
 
-            if (_lastFrameBytes != null && !ScreenCapture.HasChanged(_lastFrameBytes, currentBytes))
+            if (version != _settingsVersion)
             {
-                System.Diagnostics.Debug.WriteLine("No change, skipping.");
+                ResetFrame(); // settings changed mid-frame; redo it next tick
                 return;
             }
 
-            _lastFrameBytes = currentBytes;
-            System.Diagnostics.Debug.WriteLine($"CHANGED frame at {DateTime.Now:HH:mm:ss.fff} — running OCR...");
-
-            var result = await _ocrHelper.RecognizeTextAsync(bitmap);
-            if (result == null || string.IsNullOrWhiteSpace(result.Text))
+            if (lines.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine("No text found.");
+                TranslationCanvas.Children.Clear(); // text is gone, so drop stale overlays
                 return;
             }
 
-            ClearTranslationOverlays();
+            var translations = await _translator.TranslateAsync(lines.Select(l => l.Text).ToList());
+            if (version != _settingsVersion) return;
 
-            var source = PresentationSource.FromVisual(this);
-            double dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-            double dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
-
-            foreach (var line in result.Lines)
-            {
-                var translated = await _translator.TranslateAsync(line.Text);
-                if (translated == null) continue;
-
-                System.Diagnostics.Debug.WriteLine($"Original: '{line.Text}' -> Translated: '{translated}'");
-
-                var firstWord = line.Words.FirstOrDefault();
-                if (firstWord == null) continue;
-
-                var box = firstWord.BoundingRect;
-
-                double wpfX = (box.X / dpiX) + _selectedRegion.X;
-                double wpfY = (box.Y / dpiY) + _selectedRegion.Y;
-                double wpfWidth = _selectedRegion.Width;
-                double wpfHeight = box.Height / dpiY;
-
-                DrawTranslation(translated, wpfX, wpfY, wpfWidth, wpfHeight);
-            }
-        }
-
-        private void ClearTranslationOverlays()
-        {
+            // Swap all overlays at once so they don't flicker in line by line
             TranslationCanvas.Children.Clear();
-        }
-
-        private void DrawTranslation(string text, double x, double y, double width, double height)
-        {
-            var border = new Border
+            for (int i = 0; i < lines.Count; i++)
             {
-                Background = new SolidColorBrush(Colors.Black) { Opacity = _overlayOpacity },
-                Padding = new Thickness(2)
-            };
-
-            var textBlock = new TextBlock
-            {
-                Text = text,
-                Foreground = Brushes.White,
-                FontSize = 14,
-                TextWrapping = TextWrapping.Wrap,
-                Width = width
-            };
-
-            border.Child = textBlock;
-
-            Canvas.SetLeft(border, x);
-            Canvas.SetTop(border, y);
-
-            TranslationCanvas.Children.Add(border);
-        }
-        private void SetLanguage(int index)
-        {
-            _langIndex = index;
-            _ocrHelper.SetLanguage(_ocrLangs[_langIndex]);
-            _translator.SetTargetLang(_targetLangs[_langIndex]);
-            System.Diagnostics.Debug.WriteLine($"Language switched to: {_ocrLangs[_langIndex]} -> {_targetLangs[_langIndex]}");
-        }
-
-        private void CycleOpacity()
-        {
-            _overlayOpacity -= 0.25;
-            if (_overlayOpacity < 0.25) _overlayOpacity = 1.0;
-            System.Diagnostics.Debug.WriteLine($"Opacity set to: {_overlayOpacity}");
-
-            foreach (var child in TranslationCanvas.Children)
-            {
-                if (child is Border border)
-                    border.Background = new SolidColorBrush(Colors.Black) { Opacity = _overlayOpacity };
+                if (!string.IsNullOrWhiteSpace(translations[i]))
+                    DrawTranslation(translations[i]!, lines[i].Bounds, region, dpi);
             }
         }
+
+        private async Task<IReadOnlyList<OcrLineResult>?> CaptureAndRecognizeAsync(int x, int y, int width, int height)
+        {
+            using var bitmap = ScreenCapture.CaptureRegion(x, y, width, height);
+            var pixels = ScreenCapture.BitmapToBytes(bitmap);
+
+            var last = _lastFrameBytes;
+            if (last != null && !ScreenCapture.HasChanged(last, pixels))
+                return null;
+
+            _lastFrameBytes = pixels;
+            return await _ocr.RecognizeAsync(bitmap);
+        }
+
+        private void ResetFrame()
+        {
+            _settingsVersion++;
+            _lastFrameBytes = null;
+        }
+
+        private void DrawTranslation(string text, Rect pixelBounds, Rect region, DpiScale dpi)
+        {
+            double left = region.X + pixelBounds.X / dpi.DpiScaleX;
+            double top = region.Y + pixelBounds.Y / dpi.DpiScaleY;
+            double lineHeight = pixelBounds.Height / dpi.DpiScaleY;
+
+            var label = new Border
+            {
+                Background = _overlayBrush,
+                Padding = new Thickness(3, 1, 3, 1),
+                CornerRadius = new CornerRadius(2),
+                MaxWidth = Math.Max(region.Right - left, 80),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    Foreground = Brushes.White,
+                    FontSize = Math.Clamp(lineHeight * 0.8, 12, 28),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+
+            Canvas.SetLeft(label, left);
+            Canvas.SetTop(label, top);
+            TranslationCanvas.Children.Add(label);
+        }
+
+        #endregion
+
+        #region Settings
+
+        public void TogglePause()
+        {
+            if (_isChoosingRegion) return;
+
+            _isPaused = !_isPaused;
+            if (_isPaused)
+            {
+                _captureTimer.Stop();
+            }
+            else
+            {
+                ResetFrame();
+                _captureTimer.Start();
+            }
+
+            SelectionBox.Stroke = _isPaused ? Brushes.Gray : Brushes.Red;
+            ShowStatus(_isPaused ? "Paused" : "Resumed");
+        }
+
+        public void SetLanguage(int index)
+        {
+            var language = Languages.All[index];
+            ApplyLanguage(language);
+            _config.SourceLanguage = language.OcrTag;
+            _config.Save();
+            ShowStatus($"{language.Name} → {_config.TargetLanguage}");
+        }
+
+        private void ApplyLanguage(SourceLanguage language)
+        {
+            if (!_ocr.SetLanguage(language))
+            {
+                App.Notify($"{language.Name} OCR not installed",
+                    $"Add {language.Name} in Settings › Time & language › Language & region, including its optical character recognition feature.");
+            }
+
+            _translator.SetLanguages(language.DeepLCode, _config.TargetLanguage);
+            ResetFrame();
+        }
+
+        public void RefreshApiKey()
+        {
+            _translator.SetApiKey(_config.GetApiKey());
+            ResetFrame();
+        }
+
+        public void CycleOpacity()
+        {
+            double opacity = _overlayBrush.Opacity - 0.25;
+            if (opacity < 0.25) opacity = 1.0;
+
+            // Every overlay shares this brush, so existing labels update too
+            _overlayBrush.Opacity = opacity;
+            _config.OverlayOpacity = opacity;
+            _config.Save();
+            ShowStatus($"Overlay opacity {opacity:P0}");
+        }
+
+        private void ShowStatus(string message)
+        {
+            if (_isChoosingRegion) return;
+
+            StatusText.Text = message;
+            StatusPanel.Visibility = Visibility.Visible;
+            _statusTimer.Stop();
+            _statusTimer.Start();
+        }
+
+        #endregion
     }
 }
