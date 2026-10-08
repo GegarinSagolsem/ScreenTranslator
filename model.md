@@ -98,3 +98,4 @@ Completed in the 2026-10-08 overhaul session.
 | Backlog #4: hold `Ctrl+Shift+H` to peek at the original text | Opus 5.5 |
 | Fix overlapping labels (`TranslationLayout` fit-to-room), merging on web-style line spacing and text wrapping around photos | Opus 5.5 |
 | Background-only opacity down to 0 % with outlined subtitle-style text (`OutlinedText`) | Opus 5.5 |
+| Adjustable text size (game bar slider, tray Larger/Smaller/Reset, live re-layout) | Opus 5.5 |
