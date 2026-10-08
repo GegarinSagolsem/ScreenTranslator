@@ -25,22 +25,25 @@ jobs:
         run: |
           $version = $env:TAG.TrimStart('v')
           $project = 'ScreenTranslator/ScreenTranslator.csproj'
+          $singleFile = '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true'
 
           # Standalone: one .exe with .NET included, nothing else to install
-          dotnet publish $project -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
-            -p:DebugType=none -p:Version=$version -o out/standalone
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            dotnet publish $project -c Release -r $rid --self-contained true @singleFile -p:DebugType=none -p:Version=$version -o "out/$rid"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Compress-Archive "out/$rid/*" "ScreenTranslator-$version-$rid.zip"
+          }
 
           # Smaller download for people who already have the .NET 10 Desktop Runtime
           dotnet publish $project -c Release -r win-x64 --self-contained false -p:DebugType=none -p:Version=$version -o out/framework
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          Compress-Archive out/standalone/* "ScreenTranslator-$version-win-x64.zip"
           Compress-Archive out/framework/* "ScreenTranslator-$version-win-x64-needs-dotnet10.zip"
+
+          # Download guide and requirements go above GitHub's generated changelog
+          (Get-Content .github/release-notes.md -Raw).Replace('{version}', $version) | Set-Content notes.md
 
       - name: Create GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:TAG (Get-ChildItem *.zip).FullName --title "ScreenTranslator $env:TAG" --generate-notes
+        run: gh release create $env:TAG (Get-ChildItem *.zip).FullName --title "ScreenTranslator $env:TAG" --notes-file notes.md --generate-notes

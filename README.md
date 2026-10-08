@@ -33,7 +33,8 @@ Get the latest version from the [Releases](../../releases) page:
 
 | File | For |
 | --- | --- |
-| `ScreenTranslator-x.y.z-win-x64.zip` | Most people: one `.exe`, nothing else to install |
+| `ScreenTranslator-x.y.z-win-x64.zip` | Most people (Intel / AMD PCs): one `.exe`, nothing else to install |
+| `ScreenTranslator-x.y.z-win-arm64.zip` | Windows 11 on ARM laptops (e.g. Snapdragon), native ARM64. Not yet tested on real hardware. |
 | `ScreenTranslator-x.y.z-win-x64-needs-dotnet10.zip` | Smaller download if you already have the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) |
 
 Unzip, run `ScreenTranslator.exe`, and drag a box over the text you want translated.
@@ -47,7 +48,7 @@ from this repository.
 | | Requirement |
 | --- | --- |
 | **Operating system** | Windows 11, or Windows 10 version 2004 (May 2020 Update) or newer. 64-bit; Home, Pro and other editions; not S mode. |
-| **Processor** | Any 64-bit Intel or AMD (x64) processor. Windows 11 on ARM (e.g. Snapdragon laptops) should run it through Windows' built-in x64 emulation, but that's untested. |
+| **Processor** | Any 64-bit Intel or AMD (x64) processor, or an ARM64 processor on Windows 11 (e.g. Snapdragon laptops) using the ARM64 download, which isn't yet tested on real hardware. |
 | **Memory** | 4 GB RAM or more. The app itself uses about 200–350 MB. |
 | **Storage** | About 90 MB for the standalone download, or about 30 MB plus the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) for the smaller one. |
 | **Display** | Any resolution and display scaling, one monitor or several. |
