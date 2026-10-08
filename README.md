@@ -13,6 +13,9 @@ for translation.
 - **Change detection** — OCR and translation run only when the pixels in the region actually change.
 - **Batched, cached translation** — every line in a frame goes to DeepL in one request; repeated lines come from a local cache.
 - **Click-through overlay** — the app underneath stays fully usable, and the overlay is hidden from screen capture so it never re-reads its own output.
+- **Game bar** — an optional Xbox Game Bar–style panel (`Ctrl+Shift+G`) with Translator, Glossary and Settings widgets you can drag around and pin.
+- **Glossary** — character names and game terms always translate the way you choose, with correct grammar around them.
+- **DeepL usage** — characters used this month, in the game bar and the tray icon's tooltip.
 - **Tray icon and global hotkeys** for everything, with on-screen feedback.
 
 ## Requirements
@@ -55,6 +58,7 @@ dotnet publish ScreenTranslator -c Release -r win-x64 --self-contained false -o 
 
 | Hotkey | Action |
 | --- | --- |
+| `Ctrl+Shift+G` | Open / close the game bar (can be turned off in its Settings widget) |
 | `Ctrl+Shift+R` | Reselect the region (`Esc` keeps the current one) |
 | `Ctrl+Shift+P` | Pause / resume (the region frame turns grey while paused) |
 | `Ctrl+Shift+O` | Cycle overlay opacity (100 → 75 → 50 → 25 %) |
@@ -63,6 +67,32 @@ dotnet publish ScreenTranslator -c Release -r win-x64 --self-contained false -o 
 | `Ctrl+Shift+3` | Source language: Korean |
 
 Everything is also in the tray icon's right-click menu, including **Set DeepL API key…** and **Exit**.
+Hovering the tray icon shows this month's DeepL usage.
+
+### Game bar
+
+Press `Ctrl+Shift+G`, double-click the tray icon, or choose **Open game bar** from its menu. The screen
+dims and a home bar appears at the top with three widgets:
+
+- **Translator** — status, select region, pause, source and target language, translation box opacity and
+  DeepL usage this month.
+- **Glossary** — the terms that must always translate a certain way (see below).
+- **Settings** — DeepL API key, how often to check for new text, the `Ctrl+Shift+G` toggle and a hotkey list.
+
+Drag widgets by their title bar; positions are remembered. Close the bar with `Esc`, the ✕, or by clicking
+empty space, and focus goes back to your game. **Pin** the Translator widget to keep it on screen after the
+bar closes. It's then click-through, so it never gets in the way, like pinned widgets in Xbox Game Bar.
+
+The bar is entirely optional. Nothing appears unless you summon it, and unticking **Open this bar with
+Ctrl+Shift+G** frees that key combination for other apps.
+
+### Glossary
+
+Add a row per term, for example `モンキー・D・ルフィ` → `Monkey D. Luffy`, then **Save** (closing the bar also
+saves). ScreenTranslator turns the list into a [DeepL glossary](https://developers.deepl.com/docs/api-reference/glossaries)
+on your account named `ScreenTranslator <source>-<target> <id>`, one per language pair. It's reused across
+sessions and replaced when you edit the terms. DeepL then keeps the term exact *and* builds the grammar
+around it ("I'm one of Luffy's crew!"), which a simple find-and-replace can't do.
 
 ## Configuration
 
@@ -74,12 +104,18 @@ Settings are stored in `%AppData%\ScreenTranslator\config.json` and saved automa
   "SourceLanguage": "ja",
   "TargetLanguage": "EN-US",
   "OverlayOpacity": 0.75,
-  "CaptureIntervalMs": 500
+  "CaptureIntervalMs": 500,
+  "GameBarHotkeyEnabled": true,
+  "Glossary": [
+    { "Source": "モンキー・D・ルフィ", "Target": "Monkey D. Luffy" }
+  ],
+  "GameBarWidgets": {}
 }
 ```
 
 - `TargetLanguage` accepts any [DeepL target code](https://developers.deepl.com/docs/resources/supported-languages) (`EN-GB`, `DE`, `ES`, …).
-- `CaptureIntervalMs` is how often the region is checked for changes (minimum 200).
+- `CaptureIntervalMs` is how often the region is checked for changes (200–2000).
+- `GameBarWidgets` stores widget positions and pins; delete it to reset the layout.
 - The `DEEPL_API_KEY` environment variable, if set, overrides the saved key.
 - Free-plan keys (ending in `:fx`) and Pro keys are both detected automatically.
 
@@ -100,9 +136,10 @@ DispatcherTimer ─▶ CopyFromScreen ─▶ pixels changed? ─no─▶ skip
 | --- | --- |
 | `App.xaml(.cs)` | Startup, single instance, tray menu, notifications |
 | `MainWindow.xaml(.cs)` | Region selection, capture loop, overlay drawing, hotkeys |
+| `GameBarWindow.xaml(.cs)` | Optional game bar: home bar, draggable/pinnable widgets (WPF Fluent theme) |
 | `ScreenCapture.cs` | Screen grab and change detection |
 | `OcrHelper.cs` | Windows OCR, line bounds, CJK word joining |
-| `TranslationHelper.cs` | DeepL client with batching, caching and error messages |
+| `TranslationHelper.cs` | DeepL client: batching, caching, glossary sync, usage, error messages |
 | `AppConfig.cs` | `config.json` load/save |
 | `Languages.cs` | Supported source languages and their hotkey order |
 | `ApiKeyWindow.xaml(.cs)` | DeepL key dialog |

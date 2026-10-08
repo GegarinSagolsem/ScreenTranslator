@@ -42,6 +42,7 @@ frontmatter.
 | Build, publish, smoke-launch the app | Haiku 4.5 | low | `/run` |
 | Write commit messages, tag a release | Haiku 4.5 | low | inline |
 | XAML / overlay styling / tray menu changes | Sonnet 5 | medium | inline |
+| Game bar widgets and layout (`GameBarWindow`, Fluent theme styles) | Sonnet 5 | medium | inline, verify by rendering offscreen (the bar is hidden from screenshots) |
 | Bug or feature inside one helper (`TranslationHelper`, `AppConfig`, `Languages`, `ApiKeyWindow`) | Sonnet 5 | medium | inline |
 | NuGet or target-framework upgrades | Sonnet 5 | medium | inline, then `/run` |
 | Unit tests for pure logic (`JoinWords`, `HasChanged`, DeepL client with a fake `HttpMessageHandler`) | Sonnet 5 | medium | **general-purpose** agent |
@@ -50,6 +51,7 @@ frontmatter.
 | Win32 interop (`NativeMethods`, hotkeys, window styles, capture exclusion, DPI) | Opus 5.5 | high | inline |
 | Cross-file refactor of `MainWindow` (the graph's god node) | Opus 5.5 | high | **Plan** agent first, then inline |
 | New architecture-level feature | Opus 5.5 | xhigh | **Plan** agent, then implement |
+| DeepL glossary sync (resources created/deleted on the user's account) | Opus 5.5 | high | inline, test against the live API and clean up after |
 | API key storage, network code, anything before a public push | Opus 5.5 | high | `/security-review` |
 | Reviewing a pipeline or interop diff | Opus 5.5 | high | `/code-review high` |
 
@@ -59,15 +61,23 @@ Open improvements, each pre-routed.
 
 | # | Task | Model | Effort | Agent / skill |
 | --- | --- | --- | --- | --- |
-| 1 | Multi-monitor support (virtual screen bounds, per-monitor DPI) | Opus 5.5 | xhigh | Plan → inline → `/run` |
-| 2 | Upscale small regions before OCR to read tiny fonts | Sonnet 5 | medium | inline, test with the scratch harness approach |
-| 3 | Unit test project (`JoinWords`, `HasChanged`, `TranslationHelper`, `AppConfig`) | Sonnet 5 | medium | general-purpose |
-| 4 | GitHub Actions workflow: build on push, attach publish zip to releases | Haiku 4.5 | low | inline |
-| 5 | Target-language submenu in the tray (writes `TargetLanguage`) | Sonnet 5 | medium | inline |
-| 6 | Configurable hotkeys in `config.json` | Sonnet 5 | medium | inline |
-| 7 | Encrypt the saved API key with DPAPI (`ProtectedData`) | Sonnet 5 | medium | inline → `/security-review` (Opus 5.5) |
-| 8 | Vertical Japanese text layout | Opus 5.5 | high | Plan → inline |
-| 9 | Settings window (interval, opacity, languages, key) | Sonnet 5 | medium | inline |
+| 1 | Wait for text to settle before OCR (typewriter text burns DeepL quota) | Opus 5.5 | high | inline |
+| 2 | Merge OCR lines into sentences before translating | Opus 5.5 | high | inline |
+| 3 | Remember the last region, optionally per game/app | Sonnet 5 | medium | inline |
+| 4 | Peek hotkey: hold to hide translations | Sonnet 5 | medium | inline |
+| 5 | Subtitle mode: all translations in one panel below the region | Sonnet 5 | medium | inline |
+| 6 | Translation history widget in the game bar, copy last line | Sonnet 5 | medium | inline |
+| 7 | One-shot snip-and-translate mode | Sonnet 5 | medium | inline |
+| 8 | Claude as an alternative translator backend | Opus 5.5 | high | inline, read `/claude-api` first |
+| 9 | Multi-monitor support (virtual screen bounds, per-monitor DPI) | Opus 5.5 | xhigh | Plan → inline → `/run` |
+| 10 | Upscale small regions before OCR to read tiny fonts | Sonnet 5 | medium | inline, test with the scratch harness approach |
+| 11 | Configurable hotkeys in `config.json` + Settings widget | Sonnet 5 | medium | inline |
+| 12 | Encrypt the saved API key with DPAPI (`ProtectedData`) | Sonnet 5 | medium | inline → `/security-review` (Opus 5.5) |
+| 13 | Vertical Japanese text layout | Opus 5.5 | high | Plan → inline |
+| 14 | Start with Windows toggle | Haiku 4.5 | low | inline |
+| 15 | Log file in `%AppData%` for bug reports | Haiku 4.5 | low | inline |
+| 16 | Unit test project (`JoinWords`, `HasChanged`, `TranslationHelper`, `AppConfig`) | Sonnet 5 | medium | general-purpose |
+| 17 | GitHub Actions workflow: build on push, attach publish zip to releases | Haiku 4.5 | low | inline |
 
 ## Done
 
@@ -82,3 +92,6 @@ Completed in the 2026-10-08 overhaul session.
 | Extract `NativeMethods`, `Languages`; single instance; tray language menu | Opus 5.5 |
 | Retarget to .NET 10 LTS, drop redundant packages | Opus 5.5 |
 | README, `.gitignore`, `model.md` | Opus 5.5 |
+| DeepL usage in the tray tooltip and game bar | Opus 5.5 |
+| Glossary backed by DeepL glossaries (chosen after comparing four approaches on the live API) | Opus 5.5 |
+| Optional Xbox Game Bar–style panel: Translator / Glossary / Settings widgets, drag, pin, target-language picker | Opus 5.5 |
