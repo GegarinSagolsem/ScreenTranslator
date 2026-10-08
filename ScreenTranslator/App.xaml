@@ -14,6 +14,7 @@
                     <MenuItem Header="Open game bar" Tag="GameBar" FontWeight="SemiBold" Click="TrayGameBar_Click"/>
                     <Separator/>
                     <MenuItem Header="Reselect region" Tag="SelectRegion" Click="TrayReselect_Click"/>
+                    <MenuItem Header="Snip and translate…" Tag="Snip" Click="TraySnip_Click"/>
                     <MenuItem Header="Pause / resume" Tag="PauseResume" Click="TrayPause_Click"/>
                     <MenuItem Header="Cycle background opacity" Tag="CycleOpacity" Click="TrayOpacity_Click"/>
                     <MenuItem Header="Text size">

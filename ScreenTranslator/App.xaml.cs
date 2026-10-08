@@ -131,6 +131,8 @@ namespace ScreenTranslator
 
         private void TrayReselect_Click(object sender, RoutedEventArgs e) => _overlay?.BeginSelection();
 
+        private void TraySnip_Click(object sender, RoutedEventArgs e) => _overlay?.BeginSnip();
+
         private void TrayPause_Click(object sender, RoutedEventArgs e) => _overlay?.TogglePause();
 
         private void TrayOpacity_Click(object sender, RoutedEventArgs e) => _overlay?.CycleOpacity();

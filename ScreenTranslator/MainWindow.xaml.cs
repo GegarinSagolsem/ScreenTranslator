@@ -33,6 +33,9 @@ namespace ScreenTranslator
         private bool _isDragging;
         private bool _isPaused;
         private bool _isProcessing;
+        private bool _isSnipping;
+        private bool _wasChoosingBeforeSnip;
+        private bool _resumeAfterSnip;
         private string? _drawnSignature; // text + positions on screen; null forces a redraw
 
         // What's on screen, so a text size change can re-lay it out without another OCR pass
@@ -167,6 +170,7 @@ namespace ScreenTranslator
         {
             HotkeyCommands.GameBar => () => GameBarRequested?.Invoke(),
             HotkeyCommands.SelectRegion => BeginSelection,
+            HotkeyCommands.Snip => BeginSnip,
             HotkeyCommands.PauseResume => TogglePause,
             HotkeyCommands.CycleOpacity => CycleOpacity,
             HotkeyCommands.Peek => BeginPeek,
@@ -212,6 +216,7 @@ namespace ScreenTranslator
 
         public void BeginSelection()
         {
+            _isSnipping = false;
             _captureTimer.Stop();
             _settingsVersion++;
             if (!_selectedRegion.IsEmpty)
@@ -220,12 +225,110 @@ namespace ScreenTranslator
             TranslationCanvas.Children.Clear();
             _drawn = null;
             SelectionBox.Visibility = Visibility.Collapsed;
-            HintText.Text = _previousRegion.IsEmpty
-                ? "Drag to select the area to translate"
-                : "Drag to select a new area  ·  Esc to keep the current one";
+            HintText.Text = ChooseRegionHint;
             SetChoosingRegion(true);
             Activate();
             TranslatorStateChanged?.Invoke();
+        }
+
+        private string ChooseRegionHint => _previousRegion.IsEmpty
+            ? "Drag to select the area to translate"
+            : "Drag to select a new area  ·  Esc to keep the current one";
+
+        /// <summary>
+        /// One-shot: drag over some text to see its translation in a card. The translated region (if any)
+        /// is left as it was and resumes afterwards.
+        /// </summary>
+        public void BeginSnip()
+        {
+            if (_isSnipping || _isDragging) return;
+
+            _isSnipping = true;
+            _wasChoosingBeforeSnip = _isChoosingRegion;
+            _resumeAfterSnip = !_isChoosingRegion && HasRegion && !_isPaused;
+            _captureTimer.Stop();
+            SelectionBox.Visibility = Visibility.Collapsed;
+            HintText.Text = "Drag over the text to translate once  ·  Esc to cancel";
+            SetChoosingRegion(true);
+            Activate();
+        }
+
+        /// <summary>Puts things back the way they were before the snip.</summary>
+        private void EndSnip()
+        {
+            _isSnipping = false;
+            if (_wasChoosingBeforeSnip)
+            {
+                HintText.Text = ChooseRegionHint;
+                SelectionBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            SetChoosingRegion(false);
+            if (HasRegion) ShowSelectionBox(_selectedRegion);
+            if (_resumeAfterSnip)
+            {
+                ResetFrame();
+                _captureTimer.Start();
+            }
+        }
+
+        private async Task SnipAsync(Rect region)
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var pixels = ToScreenPixels(region, dpi);
+            var card = new SnipResultWindow();
+            card.ShowNear(new Rect(Left + region.X, Top + region.Y, region.Width, region.Height));
+
+            while (_isProcessing) await Task.Delay(50); // one OCR at a time
+            _isProcessing = true;
+            try
+            {
+                var timer = Stopwatch.StartNew();
+                bool mergeLines = _config.MergeLines, verticalText = _config.VerticalText;
+                var blocks = await Task.Run(async () =>
+                {
+                    using var bitmap = ScreenCapture.CaptureRegion(pixels.X, pixels.Y, pixels.Width, pixels.Height);
+                    return await _ocr.RecognizeAsync(bitmap, mergeLines, verticalText);
+                });
+
+                if (blocks.Count == 0)
+                {
+                    card.ShowMessage("No text found in that area.");
+                    return;
+                }
+
+                var translations = await _translator.TranslateAsync(blocks.Select(b => b.Text).ToList());
+                card.ShowResult(
+                    string.Join("\n", blocks.Select(b => b.Text)),
+                    string.Join("\n", translations.Where(t => !string.IsNullOrWhiteSpace(t))));
+                Log.Info($"Snip: translated {blocks.Count} block(s) in {timer.ElapsedMilliseconds} ms");
+            }
+            catch (TranslationException ex)
+            {
+                Log.Warn($"Snip translation failed: {ex.Message}");
+                card.ShowMessage(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Snip failed", ex);
+                card.ShowMessage("Couldn't read that area.");
+            }
+            finally
+            {
+                _isProcessing = false;
+            }
+        }
+
+        /// <summary>A region of the overlay (DIPs) in screen pixels. The overlay spans every monitor and may start left of / above the primary one.</summary>
+        private System.Drawing.Rectangle ToScreenPixels(Rect region, DpiScale dpi)
+        {
+            NativeMethods.GetWindowRect(_hwnd, out var window);
+            return new System.Drawing.Rectangle(
+                window.Left + (int)Math.Round(region.X * dpi.DpiScaleX),
+                window.Top + (int)Math.Round(region.Y * dpi.DpiScaleY),
+                (int)Math.Round(region.Width * dpi.DpiScaleX),
+                (int)Math.Round(region.Height * dpi.DpiScaleY));
         }
 
         private void SetChoosingRegion(bool choosing)
@@ -270,6 +373,13 @@ namespace ScreenTranslator
                 return;
             }
 
+            if (_isSnipping)
+            {
+                EndSnip();
+                _ = SnipAsync(region);
+                return;
+            }
+
             StartTranslating(region);
         }
 
@@ -282,6 +392,10 @@ namespace ScreenTranslator
                 _isDragging = false;
                 ReleaseMouseCapture();
                 SelectionBox.Visibility = Visibility.Collapsed;
+            }
+            else if (_isSnipping)
+            {
+                EndSnip();
             }
             else if (!_previousRegion.IsEmpty)
             {
@@ -348,12 +462,8 @@ namespace ScreenTranslator
             var region = _selectedRegion;
             var dpi = VisualTreeHelper.GetDpi(this);
 
-            // The overlay spans every monitor and may start left of / above the primary one
-            NativeMethods.GetWindowRect(_hwnd, out var window);
-            int x = window.Left + (int)Math.Round(region.X * dpi.DpiScaleX);
-            int y = window.Top + (int)Math.Round(region.Y * dpi.DpiScaleY);
-            int width = (int)Math.Round(region.Width * dpi.DpiScaleX);
-            int height = (int)Math.Round(region.Height * dpi.DpiScaleY);
+            var pixels = ToScreenPixels(region, dpi);
+            int x = pixels.X, y = pixels.Y, width = pixels.Width, height = pixels.Height;
             if (width <= 0 || height <= 0) return;
 
             bool mergeLines = _config.MergeLines, verticalText = _config.VerticalText;

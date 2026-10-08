@@ -79,6 +79,7 @@ namespace ScreenTranslator
     {
         public const string GameBar = "GameBar";
         public const string SelectRegion = "SelectRegion";
+        public const string Snip = "Snip";
         public const string PauseResume = "PauseResume";
         public const string CycleOpacity = "CycleOpacity";
         public const string Peek = "Peek";
@@ -88,6 +89,7 @@ namespace ScreenTranslator
         [
             new(GameBar, "Open / close the game bar", "Ctrl+Shift+G"),
             new(SelectRegion, "Select region", "Ctrl+Shift+R"),
+            new(Snip, "Snip and translate once", "Ctrl+Shift+Y"),
             new(PauseResume, "Pause / resume", "Ctrl+Shift+P"),
             new(CycleOpacity, "Cycle background opacity", "Ctrl+Shift+O"),
             new(Peek, "Peek at the original (hold)", "Ctrl+Shift+H"),
