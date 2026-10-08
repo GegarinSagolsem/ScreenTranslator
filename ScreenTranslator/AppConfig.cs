@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -42,7 +41,7 @@ namespace ScreenTranslator
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
             {
-                Debug.WriteLine($"Config unreadable, using defaults: {ex.Message}");
+                Log.Warn($"Config unreadable, using defaults: {ex.Message}");
                 config = new AppConfig();
             }
 
@@ -63,7 +62,7 @@ namespace ScreenTranslator
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Debug.WriteLine($"Could not save config: {ex.Message}");
+                Log.Warn($"Could not save config: {ex.Message}");
             }
         }
     }

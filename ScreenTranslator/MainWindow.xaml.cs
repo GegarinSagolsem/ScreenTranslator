@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -280,7 +279,7 @@ namespace ScreenTranslator
 
         private void StartTranslating(Rect region)
         {
-            Debug.WriteLine($"Region locked: {region}");
+            Log.Info($"Region selected: {region.Width:F0}x{region.Height:F0} at {region.X:F0},{region.Y:F0}");
             _selectedRegion = region;
             ShowSelectionBox(region);
             SetChoosingRegion(false);
@@ -308,12 +307,13 @@ namespace ScreenTranslator
             }
             catch (TranslationException ex)
             {
+                Log.Warn($"Translation failed: {ex.Message}");
                 App.Notify("Translation failed", ex.Message);
             }
             catch (Exception ex)
             {
                 // e.g. CopyFromScreen fails while the UAC / lock screen is up
-                Debug.WriteLine($"Frame failed: {ex}");
+                Log.Error("Frame failed", ex);
             }
             finally
             {

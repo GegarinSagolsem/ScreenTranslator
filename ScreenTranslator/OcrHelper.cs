@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
@@ -34,7 +33,7 @@ namespace ScreenTranslator
                 l.LanguageTag.StartsWith(language.OcrTag + "-", StringComparison.OrdinalIgnoreCase));
 
             _engine = installed != null ? OcrEngine.TryCreateFromLanguage(installed) : null;
-            Debug.WriteLine($"OCR language '{language.OcrTag}' -> {installed?.LanguageTag ?? "not installed"}");
+            Log.Info($"OCR language '{language.OcrTag}' -> {installed?.LanguageTag ?? "not installed"}");
             return _engine != null;
         }
 

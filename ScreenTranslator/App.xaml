@@ -24,6 +24,7 @@
                     <MenuItem Header="Source language" Tag="LanguageMenu"/>
                     <Separator/>
                     <MenuItem Header="Set DeepL API key…" Click="TrayApiKey_Click"/>
+                    <MenuItem Header="Open log folder" Click="TrayOpenLog_Click"/>
                     <Separator/>
                     <MenuItem Header="Exit" Click="TrayExit_Click"/>
                 </ContextMenu>

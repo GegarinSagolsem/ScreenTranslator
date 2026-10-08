@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -29,6 +30,14 @@ namespace ScreenTranslator
                 Shutdown();
                 return;
             }
+
+            DispatcherUnhandledException += (_, args) => Log.Error("Unhandled UI exception", args.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, args) => Log.Error("Unhandled exception", args.ExceptionObject as Exception);
+            TaskScheduler.UnobservedTaskException += (_, args) => Log.Error("Unobserved task exception", args.Exception);
+
+            var version = typeof(App).Assembly.GetName().Version;
+            var ocrLanguages = string.Join(", ", global::Windows.Media.Ocr.OcrEngine.AvailableRecognizerLanguages.Select(l => l.LanguageTag));
+            Log.Info($"ScreenTranslator {version} starting on {Environment.OSVersion}, .NET {Environment.Version}; OCR packs: {ocrLanguages}");
 
             _config = AppConfig.Load();
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
@@ -117,10 +126,17 @@ namespace ScreenTranslator
 
         private void TrayApiKey_Click(object sender, RoutedEventArgs e) => PromptForApiKey();
 
+        private void TrayOpenLog_Click(object sender, RoutedEventArgs e)
+        {
+            Directory.CreateDirectory(Log.Folder);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Log.Folder) { UseShellExecute = true });
+        }
+
         private void TrayExit_Click(object sender, RoutedEventArgs e) => Shutdown();
 
         protected override void OnExit(ExitEventArgs e)
         {
+            Log.Info("Exiting");
             _trayIcon?.Dispose();
             _instanceMutex?.Dispose();
             base.OnExit(e);

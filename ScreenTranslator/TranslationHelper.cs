@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -151,7 +150,7 @@ namespace ScreenTranslator
                 var body = await response.Content.ReadAsStringAsync();
                 if (!response.IsSuccessStatusCode)
                 {
-                    Debug.WriteLine($"DeepL usage error: {(int)response.StatusCode} - {body}");
+                    Log.Warn($"DeepL usage error: {(int)response.StatusCode} - {body}");
                     return;
                 }
 
@@ -165,7 +164,7 @@ namespace ScreenTranslator
             }
             catch (Exception ex) when (IsTransient(ex) || ex is JsonException or KeyNotFoundException)
             {
-                Debug.WriteLine($"DeepL usage check failed: {ex.Message}");
+                Log.Warn($"DeepL usage check failed: {ex.Message}");
             }
         }
 
@@ -220,7 +219,7 @@ namespace ScreenTranslator
                     if (!created.IsSuccessStatusCode)
                     {
                         // e.g. a language pair DeepL has no glossary support for: translate without it
-                        Debug.WriteLine($"DeepL glossary create failed: {(int)created.StatusCode} - {body}");
+                        Log.Warn($"DeepL glossary create failed: {(int)created.StatusCode} - {body}");
                         _glossaryName = name;
                         _glossaryId = null;
                         return null;
@@ -236,7 +235,7 @@ namespace ScreenTranslator
             }
             catch (Exception ex) when (IsTransient(ex) || ex is JsonException or KeyNotFoundException)
             {
-                Debug.WriteLine($"DeepL glossary sync failed: {ex.Message}");
+                Log.Warn($"DeepL glossary sync failed: {ex.Message}");
                 _nextGlossaryAttempt = DateTime.UtcNow + GlossaryRetryDelay;
                 return null;
             }
@@ -245,7 +244,7 @@ namespace ScreenTranslator
         private async Task DeleteGlossaryAsync(string id)
         {
             using var response = await SendAsync(HttpMethod.Delete, $"/v2/glossaries/{id}");
-            Debug.WriteLine($"Deleted stale glossary {id}: {(int)response.StatusCode}");
+            Log.Warn($"Deleted stale glossary {id}: {(int)response.StatusCode}");
         }
 
         private async Task<string[]> RequestAsync(string[] texts, string? glossaryId)
@@ -271,7 +270,7 @@ namespace ScreenTranslator
                 var responseBody = await response.Content.ReadAsStringAsync();
                 if (!response.IsSuccessStatusCode)
                 {
-                    Debug.WriteLine($"DeepL error: {(int)response.StatusCode} - {responseBody}");
+                    Log.Warn($"DeepL error: {(int)response.StatusCode} - {responseBody}");
                     if (glossaryId != null && response.StatusCode == HttpStatusCode.NotFound)
                         _glossaryName = null; // glossary was deleted elsewhere; recreate on the next frame
                     throw new TranslationException(DescribeError(response.StatusCode));
