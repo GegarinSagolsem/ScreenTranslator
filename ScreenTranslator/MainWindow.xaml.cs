@@ -355,8 +355,8 @@ namespace ScreenTranslator
             int height = (int)Math.Round(region.Height * dpi.DpiScaleY);
             if (width <= 0 || height <= 0) return;
 
-            bool mergeLines = _config.MergeLines;
-            var blocks = await Task.Run(() => CaptureAndRecognizeAsync(x, y, width, height, mergeLines));
+            bool mergeLines = _config.MergeLines, verticalText = _config.VerticalText;
+            var blocks = await Task.Run(() => CaptureAndRecognizeAsync(x, y, width, height, mergeLines, verticalText));
             if (blocks == null) return; // unchanged, or still typing out
 
             if (version != _settingsVersion)
@@ -393,7 +393,8 @@ namespace ScreenTranslator
                 TranslationLayout.Draw(TranslationCanvas, d.Blocks, d.Translations, d.Region, d.Dpi, _overlayBrush, _config.TextScale);
         }
 
-        private async Task<IReadOnlyList<OcrBlock>?> CaptureAndRecognizeAsync(int x, int y, int width, int height, bool mergeLines)
+        private async Task<IReadOnlyList<OcrBlock>?> CaptureAndRecognizeAsync(int x, int y, int width, int height,
+                                                                              bool mergeLines, bool verticalText)
         {
             using var bitmap = ScreenCapture.CaptureRegion(x, y, width, height);
             var pixels = ScreenCapture.BitmapToBytes(bitmap);
@@ -401,7 +402,7 @@ namespace ScreenTranslator
             if (!_frameGate.ShouldProcess(pixels, DateTime.UtcNow))
                 return null;
 
-            return await _ocr.RecognizeAsync(bitmap, mergeLines);
+            return await _ocr.RecognizeAsync(bitmap, mergeLines, verticalText);
         }
 
         private void ResetFrame()
@@ -459,6 +460,14 @@ namespace ScreenTranslator
         public void ApplyGlossary()
         {
             _translator.SetGlossary(_config.Glossary);
+            ResetFrame();
+        }
+
+        public void SetVerticalText(bool vertical)
+        {
+            _config.VerticalText = vertical;
+            _config.Save();
+            Log.Info($"Vertical text: {vertical}");
             ResetFrame();
         }
 

@@ -306,6 +306,7 @@ namespace ScreenTranslator
                 IntervalSlider.Value = _config.CaptureIntervalMs;
                 IntervalValue.Text = $"{_config.CaptureIntervalMs} ms";
                 MergeLinesCheck.IsChecked = _config.MergeLines;
+                VerticalTextCheck.IsChecked = _config.VerticalText;
 
                 var service = TranslationServiceInfo.Of(_config.ActiveService);
                 ServiceBox.SelectedItem = service;
@@ -485,6 +486,11 @@ namespace ScreenTranslator
 
             _overlay.SetCaptureInterval((int)e.NewValue);
             IntervalValue.Text = $"{(int)e.NewValue} ms";
+        }
+
+        private void VerticalTextCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_syncing) _overlay.SetVerticalText(VerticalTextCheck.IsChecked == true);
         }
 
         private void MergeLinesCheck_Changed(object sender, RoutedEventArgs e)

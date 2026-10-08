@@ -178,6 +178,10 @@
                         <ComboBox x:Name="SourceLanguageBox" DisplayMemberPath="Name" HorizontalAlignment="Stretch"
                                   SelectionChanged="SourceLanguage_Changed"/>
 
+                        <CheckBox x:Name="VerticalTextCheck" Margin="0,8,0,0" Content="Vertical text (columns, read right to left)"
+                                  ToolTip="For vertical Chinese, as in novels and manga. Japanese vertical text is detected automatically."
+                                  Checked="VerticalTextCheck_Changed" Unchecked="VerticalTextCheck_Changed"/>
+
                         <TextBlock Style="{StaticResource FieldLabel}" Text="Translate to"/>
                         <ComboBox x:Name="TargetLanguageBox" DisplayMemberPath="Name" HorizontalAlignment="Stretch"
                                   SelectionChanged="TargetLanguage_Changed"/>

@@ -17,6 +17,7 @@ namespace ScreenTranslator
             new("ja", "JA", "ja", "Japanese", NoSpaces: true),
             new("zh-Hans", "ZH", "zh-CN", "Chinese (Simplified)", NoSpaces: true),
             new("ko", "KO", "ko", "Korean", NoSpaces: false),
+            new("zh-Hant", "ZH", "zh-TW", "Chinese (Traditional)", NoSpaces: true),
         ];
 
         // Common DeepL targets; any other DeepL code still works via config.json

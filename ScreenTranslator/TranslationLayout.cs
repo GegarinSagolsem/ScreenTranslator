@@ -24,15 +24,18 @@ namespace ScreenTranslator
         {
             canvas.Children.Clear();
 
+            var placements = blocks.Select(b => Place(b, region, dpi)).ToList();
             for (int i = 0; i < blocks.Count; i++)
             {
                 var text = translations[i];
                 if (string.IsNullOrWhiteSpace(text)) continue;
 
-                double maxBottom = RoomBelow(blocks, i, region, dpi);
-                var label = CreateLabel(text, blocks[i], maxBottom, region, dpi, background, textScale);
+                var placement = placements[i];
+                double maxBottom = RoomBelow(blocks, placements, i, region, dpi);
+                var label = CreateLabel(text, blocks[i], placement, maxBottom, dpi, background, textScale);
                 canvas.Children.Add(label);
-                CoverLinesLeftOf(canvas, blocks[i], Canvas.GetLeft(label), region, dpi, background);
+                if (!blocks[i].Vertical)
+                    CoverLinesLeftOf(canvas, blocks[i], placement.Left, region, dpi, background);
             }
         }
 
@@ -61,30 +64,57 @@ namespace ScreenTranslator
             }
         }
 
-        /// <summary>The lowest point (in DIPs) a label may reach: the top of the next block beneath it, or the region's bottom.</summary>
-        private static double RoomBelow(IReadOnlyList<OcrBlock> blocks, int index, Rect region, DpiScale dpi)
-        {
-            var block = blocks[index];
-            double left = block.FirstLine.Left;
-            double bottom = region.Height * dpi.DpiScaleY;
+        /// <summary>Where a label goes, in DIPs. Labels keep this position and width range, and grow downwards.</summary>
+        private readonly record struct Placement(double Left, double Top, double MinWidth, double MaxWidth);
 
-            foreach (var other in blocks)
+        private static Placement Place(OcrBlock block, Rect region, DpiScale dpi)
+        {
+            double top = region.Y + block.Bounds.Top / dpi.DpiScaleY;
+
+            if (!block.Vertical)
             {
-                // Labels can grow to the region's right edge, so anything below that isn't entirely to the left is in the way
-                if (other.Bounds.Top > block.Bounds.Top + block.LineHeight / 2 && other.Bounds.Right > left)
-                    bottom = Math.Min(bottom, other.Bounds.Top);
+                double left = region.X + block.FirstLine.Left / dpi.DpiScaleX;
+                double maxWidth = Math.Max(region.Right - left, 80);
+                double minWidth = Math.Min((block.Bounds.Right - block.FirstLine.Left) / dpi.DpiScaleX, maxWidth);
+                return new Placement(left, top, minWidth, maxWidth);
             }
 
-            return region.Y + bottom / dpi.DpiScaleY;
+            // Vertical text: a horizontal label centred over the columns, widened when they're too narrow for English
+            double charSize = block.LineHeight / dpi.DpiScaleX;
+            double width = Math.Min(Math.Max(block.Bounds.Width / dpi.DpiScaleX, 6 * charSize), region.Width);
+            double centre = region.X + (block.Bounds.Left + block.Bounds.Width / 2) / dpi.DpiScaleX;
+            double labelLeft = Math.Clamp(centre - width / 2, region.X, region.Right - width);
+            return new Placement(labelLeft, top, width, width);
         }
 
-        private static Border CreateLabel(string text, OcrBlock block, double maxBottom, Rect region, DpiScale dpi,
+        /// <summary>
+        /// The lowest point (in DIPs) a label may reach: the top of the next block whose label could share
+        /// its horizontal space, or the region's bottom. Compares where labels can extend, not where the
+        /// source text sits: a short line's label grows rightwards to fit its translation.
+        /// </summary>
+        private static double RoomBelow(IReadOnlyList<OcrBlock> blocks, IReadOnlyList<Placement> placements, int index,
+                                        Rect region, DpiScale dpi)
+        {
+            var me = placements[index];
+            double halfLine = blocks[index].LineHeight / dpi.DpiScaleY / 2;
+            double bottom = region.Bottom;
+
+            foreach (var other in placements)
+            {
+                bool below = other.Top > me.Top + halfLine;
+                bool sideBySide = other.Left >= me.Left + me.MaxWidth || other.Left + other.MaxWidth <= me.Left;
+                if (below && !sideBySide)
+                    bottom = Math.Min(bottom, other.Top);
+            }
+
+            return bottom;
+        }
+
+        private static Border CreateLabel(string text, OcrBlock block, Placement placement, double maxBottom, DpiScale dpi,
                                           Brush background, double textScale)
         {
-            double left = region.X + block.FirstLine.Left / dpi.DpiScaleX;
-            double top = region.Y + block.Bounds.Top / dpi.DpiScaleY;
-            double maxWidth = Math.Max(region.Right - left, 80);
-            double maxHeight = maxBottom - top - 1;
+            double maxWidth = placement.MaxWidth;
+            double maxHeight = maxBottom - placement.Top - 1;
 
             var content = new OutlinedText(text);
             var label = new Border
@@ -93,7 +123,7 @@ namespace ScreenTranslator
                 Padding = new Thickness(2, 0, 2, 0),
                 CornerRadius = new CornerRadius(2),
                 // At least as big as the original text, so the translation covers all of it
-                MinWidth = Math.Min((block.Bounds.Right - block.FirstLine.Left) / dpi.DpiScaleX, maxWidth),
+                MinWidth = placement.MinWidth,
                 MaxWidth = maxWidth,
                 MinHeight = Math.Max(0, Math.Min(block.Bounds.Height / dpi.DpiScaleY + 2, maxHeight)),
                 Child = content
@@ -112,8 +142,8 @@ namespace ScreenTranslator
                 fontSize = Math.Max(minFontSize, fontSize - 1);
             }
 
-            Canvas.SetLeft(label, left);
-            Canvas.SetTop(label, top);
+            Canvas.SetLeft(label, placement.Left);
+            Canvas.SetTop(label, placement.Top);
             return label;
         }
     }

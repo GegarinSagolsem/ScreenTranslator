@@ -20,6 +20,7 @@ namespace ScreenTranslator
         public double TextScale { get; set; } = 1.0;
         public int CaptureIntervalMs { get; set; } = 500;
         public bool MergeLines { get; set; } = true;
+        public bool VerticalText { get; set; }
 
         /// <summary>Command id → "Ctrl+Shift+R". Missing means the default; "" means turned off.</summary>
         public Dictionary<string, string> Hotkeys { get; set; } = new();
